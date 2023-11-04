@@ -9,14 +9,13 @@ const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { JsonDB, Config } = require('node-json-db');
 
 const CHAT_HISTORY_LENGTH = 100;
-const chat_history = [];
+const chat_history = {};
 
 const HOUR_IN_MILLISECONDS = 1 * 60 * 60 * 1000;
-//TODO put back longer times
-// const LAST_SEEN_GREETZ_THRESHOLD_MS = 5 * HOUR_IN_MILLISECONDS;
-// const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 0.5 * HOUR_IN_MILLISECONDS;
-const LAST_SEEN_GREETZ_THRESHOLD_MS = 10 * 1000; //10 seconds (for testing)
-const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 2.5 * 1000; //2.5 seconds (for testing)
+const LAST_SEEN_GREETZ_THRESHOLD_MS = 5 * HOUR_IN_MILLISECONDS;
+const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 0.5 * HOUR_IN_MILLISECONDS;
+// const LAST_SEEN_GREETZ_THRESHOLD_MS = 10 * 1000; //10 seconds (for testing)
+// const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 2.5 * 1000; //2.5 seconds (for testing)
 // const LAST_SEEN_GREETZ_THRESHOLD_MS = 2 * 60 * 1000; //2 minutes (for testing)
 // const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 1.01 * 60 * 1000; //1.01 minutes (for testing)
 
@@ -101,27 +100,31 @@ app.get('/nicknames.json', (req, res) => { res.sendFile('/srv/nicknames.json') }
 // The last argument is the separator. By default it's slash (/)
 var db = new JsonDB(new Config("/srv/nicknames", true, true, '/'));
 
-async function getNicknames() {
-    return await db.getData('/nicknames/');
-}
-async function getNickname(username) {
+async function getNicknames(channel) {
     try {
-        return await db.getData('/nicknames/' + username);
+        return await db.getData('/channels/' + channel + '/nicknames/');
+    } catch (error) {
+        return {};
+    }
+}
+async function getNickname(channel, username) {
+    try {
+        return await db.getData('/channels/' + channel + '/nicknames/' + username);
     } catch (error) {
         return undefined;
     }
 }
 
-async function deleteNickname(username) {
-    await db.delete('/nicknames/' + username);
+async function deleteNickname(channel, username) {
+    await db.delete('/channels/' + channel + '/nicknames/' + username);
 }
 
-async function setNickname(username, nickname) {
-    await db.push('/nicknames/' + username, nickname);
+async function setNickname(channel, username, nickname) {
+    await db.push('/channels/' + channel + '/nicknames/' + username, nickname);
 }
 
-async function getUsername(nickname) {
-    const nicknames = await getNicknames();
+async function getUsername(channel, nickname) {
+    const nicknames = await getNicknames(channel);
     let found = undefined;
     Object.keys(nicknames).forEach(username => {
         if (nicknames[username] === nickname) {
@@ -132,13 +135,13 @@ async function getUsername(nickname) {
 }
 
 
-async function setLastSeenNow(username) {
-    await db.push('/lastseen/' + username, + new Date());
+async function setLastSeenNow(channel, username) {
+    await db.push('/channels/' + channel + '/lastseen/' + username, + new Date());
 }
 
-async function getLastSeen(username) {
+async function getLastSeen(channel, username) {
     try {
-        return await db.getData('/lastseen/' + username);
+        return await db.getData('/channels/' + channel + '/lastseen/' + username);
     } catch (error) {
         return undefined;
     }
@@ -158,35 +161,40 @@ function parse_greetz(message, username, nickname) {
 
 
 //use socket.io to make a simple live chatroom
-io.on('connection', async (socket) => {
-    console.log('[socket.io] a user connected');
+io.on('connection', (socket) => {
+    console.log('[socket.io] a user connected:');
     socket.on('disconnect', () => {
         console.log('[socket.io] a user disconnected');
     });
-    const nicknames = await getNicknames();
-    Object.keys(nicknames).forEach(username => {
-        const nickname = nicknames[username];
-        send_nickname(username, nickname);
-    });
-    //replay the chat history
-    chat_history.forEach(msg => send_chat(...msg, true));
 
-    // socket.on('chat message', (msg) => {
-    //     console.log(`[socket.io] RECV ${msg.name}: ${msg.text}`);
-    //     // send_chat(msg.name, msg.text);
-    //     handleCommand(msg.text);
-    // });
+    //when client sends an 'init' message
+    socket.on('init', async (msg) => {
+        const channel = msg.channel;
+        console.log(`[socket.io] INIT ${channel}`);
+        const nicknames = await getNicknames(channel);
+        Object.keys(nicknames).forEach(username => {
+            const nickname = nicknames[username];
+            send_nickname(channel, username, nickname);
+        });
+        //replay the chat history
+        if (chat_history[channel]) {
+            chat_history[channel].forEach(msg => send_chat(channel, ...msg, true));
+        }
+    });
 });
 
-function send_chat(username, nickname, text, replaying) {
+function send_chat(channel, username, nickname, text, replaying) {
     if (!replaying) {
-        chat_history.push([username, nickname, text]);
-        if (chat_history.length > CHAT_HISTORY_LENGTH) {
-            chat_history.shift();
+        if (!chat_history[channel]) {
+            chat_history[channel] = [];
+        }
+        chat_history[channel].push([username, nickname, text]);
+        if (chat_history[channel].length > CHAT_HISTORY_LENGTH) {
+            chat_history[channel].shift();
         }
     }
     console.log(`[socket.io] SEND CHAT ${username} (${nickname}): ${text}`);
-    io.emit('chat', { username: username, nickname: nickname, text: text });
+    io.emit(channel + '/chat', { username: username, nickname: nickname, text: text });
     // emit the message many times for testing CSS
     // let iomsg = { username: username, nickname: nickname, text: text }
     // iomsg.text = iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+iomsg.text+
@@ -196,15 +204,15 @@ function send_chat(username, nickname, text, replaying) {
     // }
 }
 
-function send_nickname(username, nickname) {
+function send_nickname(channel, username, nickname) {
     console.log(`[socket.io] SEND NICKNAME ${nickname} = ${username}`);
-    io.emit('nickname', { username: username, nickname: nickname });
+    io.emit(channel + '/nickname', { username: username, nickname: nickname });
 }
 
 //twitch chat stuff
 dotenv.config({ path: '/srv/secret-twitch.env' }) //bot API key and other info
 //the /srv/secret-twitch.env file should look like:
-//TWITCH_BOT_USERNAME=JJsNicknameBot (or create a second account for the bot)
+//TWITCH_BOT_USERNAME=JJsNicknameBot (create an account for the bot and put the username here)
 //TWITCH_BOT_OAUTH_TOKEN=oauth:blah blah blah
 //TWITCH_BOT_CHANNELS=jjvantheman,minecraft1167890
 
@@ -217,7 +225,7 @@ const opts = {
     channels: process.env.TWITCH_BOT_CHANNELS.split(',')
 };
 
-// console.log("[twitch] SECRETS: " + JSON.stringify(opts));
+// console.log("[twitch] SECRETS:" + JSON.stringify(opts));
 
 // Create a client with our options
 const client = new tmi.client(opts);
@@ -237,14 +245,15 @@ async function onMessageHandler(target, context, msg, self) {
     console.log(`[twitch] TARGET: ${target} SELF: ${self} CONTEXT: ${JSON.stringify(context)}`);
     const username = context['display-name'];
     console.log(`[twitch] ${username}: ${msg}`);
+    const channel = target.replace('#', '');
 
     // Ignore whispers
     if (context["message-type"] === "whisper") { return; }
 
-    const nickname = await getNickname(username);
+    const nickname = await getNickname(channel, username);
 
     //forward message to socket chat
-    send_chat(username, nickname, msg);
+    send_chat(channel, username, nickname, msg);
 
     if (self) { return; } // Ignore messages from the bot
     const [valid_command, carl_command] = await handleCommand(target, context, msg, username);
@@ -253,7 +262,7 @@ async function onMessageHandler(target, context, msg, self) {
     if (username.toLowerCase() !== process.env.TWITCH_BOT_USERNAME.toLowerCase()) {
         if (nickname !== undefined) {
             if (!carl_command) { //carl already replies, no need for double
-                const lastSeen = await getLastSeen(username);
+                const lastSeen = await getLastSeen(channel, username);
                 const now = + new Date();
                 console.log('[greetz]', username, now - lastSeen);
                 if (lastSeen === undefined || now - lastSeen > LAST_SEEN_GREETZ_THRESHOLD_MS) {
@@ -280,22 +289,22 @@ async function onMessageHandler(target, context, msg, self) {
                     }
                 }
             }
-            setLastSeenNow(username);
+            setLastSeenNow(channel, username);
         }
     }
 }
 
 
-async function getNicknameMsg(username) {
-    const nickname = await getNickname(username);
+async function getNicknameMsg(channel, username) {
+    const nickname = await getNickname(channel, username);
     if (nickname === undefined) {
         return `${username} has not set a nickname yet (with !setnickname)`;
     }
     return `${username}'s nickname is ${nickname}`;
 }
 
-async function getUsernameMsg(nickname) {
-    const username = await getUsername(nickname);
+async function getUsernameMsg(channel, nickname) {
+    const username = await getUsername(channel, nickname);
     if (username === undefined) {
         return `nickname "${nickname}" does not belong to anyone (claim it with !setnickname)`;
     }
@@ -303,37 +312,40 @@ async function getUsernameMsg(nickname) {
     // return `${username}'s nickname is ${nickname}`;
 }
 
-async function nicknameAlreadyTaken(nickname) {
-    const nicknames = Object.values(await getNicknames());
+async function nicknameAlreadyTaken(channel, nickname) {
+    const nicknames = Object.values(await getNicknames(channel));
     return nicknames.includes(nickname);
 }
 
-async function updateChatHistory() {
-    const nicknames = await getNicknames();
-    chat_history.forEach(msg => {
-        msg[1] = nicknames[msg[0]];
-    });
+async function updateChatHistory(channel) {
+    if (chat_history[channel]) {
+        const nicknames = await getNicknames(channel);
+        chat_history[channel].forEach(msg => {
+            msg[1] = nicknames[msg[0]];
+        });
+    }
 }
 
 async function handleCommand(target, context, msg, username) {
     // Remove whitespace and 7TV bypass from chat message
     const commandName = msg.replace(' 󠀀', '').trim();
+    const channel = target.replace('#', '');
 
     var valid = true;
     var carl = false;
     // If the command is known, let's execute it
     if (commandName === '!nickname') { //retrieve the nickname of the user who typed it
-        client.say(target, await getNicknameMsg(username));
+        client.say(target, await getNicknameMsg(channel, username));
     } else if (commandName.startsWith('!nickname ')) { //retrieve a nickname for a specific user
         const lookup_username = commandName.replace('!nickname', '').trim();
-        client.say(target, await getNicknameMsg(lookup_username));
+        client.say(target, await getNicknameMsg(channel, lookup_username));
     } else if (commandName.startsWith('!username ')) { //retrieve a username based on a nickname
         const nickname = commandName.replace('!username', '').trim();
-        client.say(target, await getUsernameMsg(nickname));
+        client.say(target, await getUsernameMsg(channel, nickname));
     } else if (commandName === '!unsetnickname') {
-        await deleteNickname(username);
-        send_nickname(username, undefined);
-        updateChatHistory();
+        await deleteNickname(channel, username);
+        send_nickname(channel, username, undefined);
+        updateChatHistory(channel);
         client.say(target, `${username} removed nickname, sad to see you go`);
     } else if (commandName === '!setnickname') {
         client.say(target, `please provide a nickname with the !setnickname command`);
@@ -341,12 +353,12 @@ async function handleCommand(target, context, msg, username) {
         const nickname = commandName.replace('!setnickname', '').trim();
         if (nickname.length > 2) {
             client.say(target, `@${username} nickname "${nickname}" is too long, must be 2 letters`);
-        } else if (await nicknameAlreadyTaken(nickname) && !await getNickname(username) === nickname) {
+        } else if (await nicknameAlreadyTaken(channel, nickname) && !await getNickname(channel, username) === nickname) {
             client.say(target, `@${username} nickname "${nickname}" is already taken, see !nicknames for the list`);
         } else {
-            await setNickname(username, nickname);
-            send_nickname(username, nickname);
-            updateChatHistory();
+            await setNickname(channel, username, nickname);
+            send_nickname(channel, username, nickname);
+            updateChatHistory(channel);
             client.say(target, `${username} set nickname to ${nickname}`);
         }
     } else if (commandName === '!nicknames') {
@@ -376,11 +388,11 @@ async function handleCommand(target, context, msg, username) {
             });
             response.on('end', async () => {
                 // const body = JSON.parse(data);
-                console.log("[bot] CARL: ", data);
+                console.log("[bot] CARL:", data);
                 if (response.statusCode === 200) {
                     let display_data = data;
                     if (data.includes('Carl') || data.includes('carl')) {
-                        const nickname = await getNickname(username);
+                        const nickname = await getNickname(channel, username);
                         display_data = data.replace('Carl', nickname).replace('carl', nickname);
                         console.log("[bot] CARL (edited): ", display_data);
                     }

@@ -3,40 +3,10 @@
     <head>
         <title>twitch nicknames</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <!-- <link rel="stylesheet" type="text/css" href="/video-js.css"> -->
         <link rel="stylesheet" type="text/css" href="/static/style.css">
     </head>
     <body>
-        <!-- <div id="stream">
-            <video
-                id="my-video"
-                class="video-js vjs-default-skin vjs-16-9"
-                controls
-                preload="auto"
-                width="640"
-                height="264"
-                poster="/static/stream.png"
-                data-setup='{"fluid": true}'
-            >
-                <source src="/live/stream/index.m3u8" type="application/vnd.apple.mpegurl" />
-                <p class="vjs-no-js">
-                To view this video please enable JavaScript, and consider upgrading to a web browser that
-                <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
-                </p>
-            </video>
-            <div id="about">
-                <p>Welcome to the RTMP stream backend! See <a target="_blank" href="https://johanv.net">johanv.net</a> for the main stream page and more info.</p>
-            </div>
-
-            <audio id="notification">
-                <source src="/static/notification.ogg" type="audio/mpeg">
-            </audio>
-        </div> -->
         <div id="app">
-
-            <div :style="{ color: activeColor, fontSize: fontSize + 'px' }"></div>
-
-
             <div id="nicknames_container">
                 <h1>Nickname Ledger</h1>
                 <span v-if="channel">
@@ -66,34 +36,19 @@
                         <span class="chat_text">{{msg.text}}</span>
                     </li>
                 </ul>
-                <!-- <form action="">
-                    name: <input id="name" autocomplete="off" />
-                    <input type="checkbox" id="check" name="check" value="yes">
-                    <label for="check">sound?</label><br/>
-                    <input id="m" autocomplete="off" autofocus />
-                    <button>send</button>
-                    <a target="_blank" href="/chat"><img style="width:20px" src="/static/external-link-ltr-icon.svg" alt="popout"/></a>
-                </form> -->
             </div>
         </div>
 
         <script src="/socket.io/socket.io.js"></script>
         <script src="/vue.js"></script>
-        <!-- <script src="https://github.com/zenozeng/color-hash/raw/master/dist/color-hash.js"></script> -->
         <script src="/color-hash.js"></script>
 
-
-        
         <script>
-
-const socket = io();
-// socket.on('nickname', console.log('@@@'));
-
 const { createApp, ref } = Vue
 
 createApp({
     data() {return {
-        // socket: io(),
+        socket: undefined,
         channel: undefined,
         message: 'hi',
         nicknames: {},
@@ -107,6 +62,7 @@ createApp({
         },
         socket_connect() {
             console.log('socket connected');
+            this.socket.emit('init', {'channel': this.channel});
         },
         socket_error() {
             console.log('socket error');
@@ -149,58 +105,17 @@ createApp({
             this.load_from_local_url();
         });
 
+        this.socket = io();
 
-        socket.on('connect', this.socket_connect);
-        socket.on('connect_failed', this.socket_error);
-        socket.on('disconnect', this.socket_error);
+        this.socket.on('connect', this.socket_connect);
+        this.socket.on('connect_failed', this.socket_error);
+        this.socket.on('disconnect', this.socket_error);
 
-        socket.on('nickname', this.socket_nickname);
-        socket.on('chat', this.socket_chat_message);
+        console.log(this.channel)
+        this.socket.on(this.channel + '/nickname', this.socket_nickname); //TODO stop listening and start on new channel when needed
+        this.socket.on(this.channel + '/chat', this.socket_chat_message);
     },
-    // setup() {
-    //     const message = ref('Hello vue!')
-    //     return {
-    //         message
-    //     }
-    // }
 }).mount('#app')
-
-            // function add_nickname(username, nickname) {
-            //     $('#nicknames').append($('<li>')
-            //         .append($('<span>').text(nickname)
-            //             .css('color', colorHash.hex(username+"...."))
-            //             .css('font-family', 'monospace'))
-            //         .append($('<span>').text(" = "))
-            //         .append($('<span>').text(username)
-            //             .css('color', colorHash.hex(username+"....")))
-            //     ).css('font-weight', 'bold');
-            // }
-            // fetch('/nicknames.json')
-            // .then(res => res.json())
-            // .then(json => Object.keys(json).forEach(username => {
-            //     nickname = json[username];
-            //     add_nickname(username, nickname);
-            // }));
-
-            // var colorHash = new ColorHash({lightness: [0.5,0.6,0.7,0.8], saturation: [0.6,0.7,0.8,0.9,1]});
-
-            // $(function () {
-            //     var socket = io();
-            //     socket.on('nickname', function(msg) {
-            //         add_nickname(msg.name, msg.text);
-            //     });
-            //     socket.on('chat message', function(msg) {
-            //         $('#messages').append($('<li>')
-            //             .append($('<span>').text(msg.name)
-            //                 .css('color', colorHash.hex(msg.name+"...."))
-            //                 .css('font-weight', 'bold'))
-            //             .append($('<span>').text(": " + msg.text))
-            //         );
-                    
-            //         //scroll to the most recent message
-            //         $("#messages").scrollTop($("#messages")[0].scrollHeight);
-            //     });
-            // });
         </script>
     </body>
 </html>
