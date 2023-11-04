@@ -8,8 +8,10 @@ const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { JsonDB, Config } = require('node-json-db');
 
+const BOT_NICKNAME = '🤖';
 const CHAT_HISTORY_LENGTH = 100;
 const chat_history = {};
+const carl_history = {};
 
 const HOUR_IN_MILLISECONDS = 1 * 60 * 60 * 1000;
 const LAST_SEEN_GREETZ_THRESHOLD_MS = 5 * HOUR_IN_MILLISECONDS;
@@ -76,7 +78,6 @@ const GREETZ_WELCOME_BACK_ALSO = [
     'also hi again #',
 ];
 
-const carl_history = {};
 
 //expose js libraries to client so they can run in the browser
 app.get('/', (req, res) => { res.sendFile(__dirname + '/index.html') });
@@ -90,6 +91,8 @@ app.use('/static', express.static('static'));
 
 //expose the list of nicknames
 app.get('/nicknames.json', (req, res) => { res.sendFile('/srv/nicknames.json') });
+
+app.get('/channels.json', (req, res) => { res.send(JSON.stringify(channels)) })
 
 // app.get('/*', (req, res) => { res.sendFile(__dirname + '/index.html') });
 
@@ -162,7 +165,7 @@ function parse_greetz(message, username, nickname) {
 
 //use socket.io to make a simple live chatroom
 io.on('connection', (socket) => {
-    console.log('[socket.io] a user connected:');
+    console.log('[socket.io] a user connected');
     socket.on('disconnect', () => {
         console.log('[socket.io] a user disconnected');
     });
@@ -172,6 +175,7 @@ io.on('connection', (socket) => {
         const channel = msg.channel;
         console.log(`[socket.io] INIT ${channel}`);
         const nicknames = await getNicknames(channel);
+        send_nickname(channel, process.env.TWITCH_BOT_USERNAME, BOT_NICKNAME);
         Object.keys(nicknames).forEach(username => {
             const nickname = nicknames[username];
             send_nickname(channel, username, nickname);
@@ -215,6 +219,12 @@ dotenv.config({ path: '/srv/secret-twitch.env' }) //bot API key and other info
 //TWITCH_BOT_USERNAME=JJsNicknameBot (create an account for the bot and put the username here)
 //TWITCH_BOT_OAUTH_TOKEN=oauth:blah blah blah
 //TWITCH_BOT_CHANNELS=jjvantheman,minecraft1167890
+//TWITCH_BOT_MAX_NICKNAME_LENGTHS=3,100
+
+const channels = process.env.TWITCH_BOT_CHANNELS.split(',');
+const max_nickname_lengths = {};
+process.env.TWITCH_BOT_MAX_NICKNAME_LENGTHS.split(',').forEach((max, i) => max_nickname_lengths[channels[i]] = max);
+console.log('max_nickname_lengths:', max_nickname_lengths);
 
 // Define configuration options
 const opts = {
@@ -222,7 +232,7 @@ const opts = {
         username: process.env.TWITCH_BOT_USERNAME,
         password: process.env.TWITCH_BOT_OAUTH_TOKEN
     },
-    channels: process.env.TWITCH_BOT_CHANNELS.split(',')
+    channels: JSON.parse(JSON.stringify(channels)) //make a copy since this gets modified
 };
 
 // console.log("[twitch] SECRETS:" + JSON.stringify(opts));
@@ -250,7 +260,11 @@ async function onMessageHandler(target, context, msg, self) {
     // Ignore whispers
     if (context["message-type"] === "whisper") { return; }
 
-    const nickname = await getNickname(channel, username);
+    let nickname = await getNickname(channel, username);
+
+    if (username === process.env.TWITCH_BOT_USERNAME) {
+        nickname = BOT_NICKNAME;
+    }
 
     //forward message to socket chat
     send_chat(channel, username, nickname, msg);
@@ -314,7 +328,7 @@ async function getUsernameMsg(channel, nickname) {
 
 async function nicknameAlreadyTaken(channel, nickname) {
     const nicknames = Object.values(await getNicknames(channel));
-    return nicknames.includes(nickname);
+    return nickname === BOT_NICKNAME || nicknames.includes(nickname);
 }
 
 async function updateChatHistory(channel) {
@@ -351,9 +365,11 @@ async function handleCommand(target, context, msg, username) {
         client.say(target, `please provide a nickname with the !setnickname command`);
     } else if (commandName.startsWith('!setnickname ')) {
         const nickname = commandName.replace('!setnickname', '').trim();
-        if (nickname.length > 2) {
-            client.say(target, `@${username} nickname "${nickname}" is too long, must be 2 letters`);
-        } else if (await nicknameAlreadyTaken(channel, nickname) && !await getNickname(channel, username) === nickname) {
+        if (nickname.length > max_nickname_lengths[channel]) {
+            client.say(target, `@${username} nickname "${nickname}" is too long, must be ${max_nickname_lengths[channel]} letters`);
+        } else if (await getNickname(channel, username) === nickname) {
+            client.say(target, `@${username} you already have that nickname`);
+        } else if (await nicknameAlreadyTaken(channel, nickname)) {
             client.say(target, `@${username} nickname "${nickname}" is already taken, see !nicknames for the list`);
         } else {
             await setNickname(channel, username, nickname);
@@ -429,5 +445,5 @@ server.listen(process.env.PORT || default_port, () => {
     console.log('listening on *:' + (process.env.PORT || default_port));
 });
 
-//TODO add a README with setup instructions and change package name and version
-//TODO only show chat for 1 channel
+//TODO custom messages such as "good luck, 47"
+//TODO list of admins per channel (plus the channel itself) who can set other people's nicknames

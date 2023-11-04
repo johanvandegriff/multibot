@@ -9,9 +9,17 @@
         <div id="app">
             <div id="nicknames_container">
                 <h1>Nickname Ledger</h1>
+                <span v-if="channels.length > 1 || !channel">
+                    Channels:
+                    <span v-for="c, i in channels">
+                        <span v-if="i > 0"> | </span>
+                        <span v-if="c === channel" style="font-weight: bold">{{c}}</span>
+                        <a v-else :href="'#' + c">{{c}}</a>
+                    </span>
+                </span>
                 <span v-if="channel">
                     <p>Use <code>!setnickname</code> in {{channel}}'s chat to show up here!</p>
-                    <ul id="nicknames">
+                        <ul id="nicknames">
                         <li v-for="username in Object.keys(nicknames)" :style="{ color: compute_color(username) }">
                             <span class="nickname">{{nicknames[username]}}</span>
                             <span class="equals"> = </span>
@@ -19,16 +27,13 @@
                         </li>
                     </ul>
                 </span>
-                <span v-else>
-                    enter the name of the twitch channel:
-                    <input v-on:change="goto_channel" id="channel_input" type="text">
-                    <button @click="goto_channel">go</button>
-                </span>
             </div>
 
             <div id="chat">
-                <h2>Chat</h2>
-                <label><input type="checkbox" v-model="only_show_nicknames"> only show chat from people with nicknames</label>
+                <div id="chat-header">
+                    <h2>Chat</h2>
+                    <label><input type="checkbox" v-model="only_show_nicknames"> only show chat from people with nicknames</label>
+                </div>
                 <ul id="messages">
                     <li v-for="msg in chat" :style="{ display: (!only_show_nicknames || msg.nickname) ? '' : 'none' }">
                         <span class="nickname" :style="{ color: compute_color(msg.username) }">{{msg.nickname || msg.username}}</span>
@@ -50,6 +55,7 @@ createApp({
     data() {return {
         socket: undefined,
         channel: undefined,
+        channels: [],
         nicknames: {},
         chat: [],
         only_show_nicknames: true,
@@ -89,11 +95,10 @@ createApp({
             });
         },
         load_from_local_url() {
-            this.channel = window.location.href.split('#')[1];
-        },
-        goto_channel() {
-            this.channel = document.querySelector('#channel_input').value.toLowerCase();
-            window.location = '#' + this.channel;
+            this.channel = window.location.href.split('#')[1]?.toLowerCase();
+            if (this.channel) {
+                window.location = '#' + this.channel;
+            }
         }
     },
     mounted() {
@@ -104,15 +109,30 @@ createApp({
             this.load_from_local_url();
         });
 
-        this.socket = io();
+        fetch('/channels.json')
+        .then(res => res.json())
+        .then(json => this.channels = json);
+    },
+    watch: {
+        channel(new_channel, old_channel) {
+            if (this.socket) {
+                this.socket.disconnect();
+            }
+            this.chat = []
+            this.nicknames = {}
 
-        this.socket.on('connect', this.socket_connect);
-        this.socket.on('connect_failed', this.socket_error);
-        this.socket.on('disconnect', this.socket_error);
+            if (this.channel) {
+                this.socket = io();
 
-        console.log(this.channel)
-        this.socket.on(this.channel + '/nickname', this.socket_nickname); //TODO stop listening and start on new channel when needed
-        this.socket.on(this.channel + '/chat', this.socket_chat_message);
+                this.socket.on('connect', this.socket_connect);
+                this.socket.on('connect_failed', this.socket_error);
+                this.socket.on('disconnect', this.socket_error);
+
+                console.log(new_channel + '/nickname', new_channel + '/chat')
+                this.socket.on(new_channel + '/nickname', this.socket_nickname);
+                this.socket.on(new_channel + '/chat', this.socket_chat_message);
+            }
+        },
     },
 }).mount('#app')
         </script>
