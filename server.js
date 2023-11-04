@@ -13,7 +13,7 @@ const chat_history = {};
 
 const HOUR_IN_MILLISECONDS = 1 * 60 * 60 * 1000;
 const LAST_SEEN_GREETZ_THRESHOLD_MS = 5 * HOUR_IN_MILLISECONDS;
-const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 0.5 * HOUR_IN_MILLISECONDS;
+const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 0.25 * HOUR_IN_MILLISECONDS;
 // const LAST_SEEN_GREETZ_THRESHOLD_MS = 10 * 1000; //10 seconds (for testing)
 // const LAST_SEEN_GREETZ_WB_THRESHOLD_MS = 2.5 * 1000; //2.5 seconds (for testing)
 // const LAST_SEEN_GREETZ_THRESHOLD_MS = 2 * 60 * 1000; //2 minutes (for testing)
