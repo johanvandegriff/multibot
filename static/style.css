@@ -21,6 +21,30 @@ body {
     color:white;
 }
 
+#login {
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 1;
+	border: 1px solid white;
+	/* padding: 2px 0px 0px 2px; */
+	margin: 0px 1px;
+    height: 30px;
+}
+
+#login img {
+    height: 30px;
+}
+
+#super_admin {
+    border: 1px solid red;
+    border-radius: 5px;
+    background-color: #611;
+    padding: 4px 4px 3px 4px;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+}
+
 #nicknames {
     list-style-type: none;
     font-weight: bold;
@@ -29,6 +53,14 @@ body {
 
 #nicknames_container {
     width: 50%;
+}
+
+.edit {
+    font-size: larger;
+    color: white;
+}
+.delete {
+    color: white;
 }
 
 .nickname {
