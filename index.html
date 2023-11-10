@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
     <head>
-        <title>twitch nicknames</title>
+        <title>twitch integration</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="stylesheet" type="text/css" href="/static/style.css">
     </head>
@@ -24,8 +24,8 @@
                     &nbsp;
                 </span>
             </div>
-            <div id="nicknames_container">
-                <h1>Nickname Ledger</h1>
+            <div id="left_container">
+                <h1>Settings</h1>
                 <p v-if="channels">
                     Channel:
                     
@@ -36,15 +36,6 @@
                         <option v-else v-for="c in channels.filter(c => c !== channel)" :value="c">[[ c ]]</option>
                     </select>
                     <button @click="custom_channel">custom</button>
-                    <!-- <span v-for="c, i in channels">
-                        <span v-if="i > 0"> | </span>
-                        <span v-if="c === channel" style="font-weight: bold">[[ c ]]</span>
-                        <a v-else :href="'#' + c">[[ c ]]</a>
-                    </span>
-                    <span v-if="channel && !channels.includes(channel)">
-                        <span v-if="channels.length > 0"> | </span>
-                        <span style="font-weight: bold">[[ channel ]]</span>
-                    </span> -->
                 </p>
                 <p v-else>
                     Loading...
@@ -57,7 +48,7 @@
                         <p v-else style="background-color: #d22; padding: 5px">
                             The bot is NOT enabled on <span v-if="channel === login">your</span><span v-else>this</span> channel ([[ channel ]]). <button style="color: #d22; font-weight: bold" @click="set_enabled(true)">ENABLE</button>
                         </p>
-                        max nickname length: <input @keyup="set_max_nickname_length" @click="set_max_nickname_length" v-model="max_nickname_length" type="number">
+                        <!-- TODO: set youtube channel here -->
                     </span>
                     <span v-else>
                         <p style="background-color: #555; padding: 5px">
@@ -67,53 +58,18 @@
                         </p>
                     </span>
                 </span>
-                <span v-if="channel && channels">
-                    <span v-if="channels.includes(channel)">
-                        <p v-if="channel === login || is_super_admin" style="padding: 5px">
-                            Use <code>!setnickname</code> in the chat to show up here!
-                        </p>
-                        <p v-else style="background-color: #292; padding: 5px">
-                            Use <code>!setnickname</code> in [[ channel ]]'s chat to show up here!
-                        </p>
-                    </span>
-                    <p v-else-if="!(channel === login || is_super_admin)" style="background-color: #d22; padding: 5px">
-                        The bot is NOT enabled on this channel ([[ channel ]]), ask the streamer to enable it by visiting this page and logging in.
-                    </p>
-                    <ul id="nicknames">
-                        <li v-for="username in Object.keys(nicknames)" :style="{ color: compute_color(username) }">
-                            <span v-if="editing_username === username">
-                                <input v-model="editing_nickname">
-                                <button @click="save_nickname">done</button>
-                            </span>
-                            <span v-else>
-                                <span class="edit" v-if="loggedIn && channel === login || is_super_admin" @click="editing_nickname = nicknames[username]; editing_username = username">✎ </span>
-                                <span class="nickname">[[ nicknames[username] ]]</span>
-                            </span>
-                            <span class="equals"> = </span>
-                            <span class="username">[[ username ]]</span>
-                            <span class="delete" v-if="loggedIn && channel === login || is_super_admin" @click="delete_nickname(username)"> ⓧ</span>
-                        </li>
-                        <li v-if="loggedIn && channel === login || is_super_admin">
-                            <input v-model="new_nickname" style="width: 100px">
-                            <span class="equals"> = </span>
-                            <input v-model="new_username">
-                            <button @click="add_nickname">&nbsp; + &nbsp;</button>
-                            (case sensitive)
-                        </li>
-                    </ul>
-                </span>
             </div>
 
             <div id="chat">
                 <div id="chat-header">
                     <h2>Chat</h2>
-                    <label><input type="checkbox" v-model="only_show_nicknames"> only show chat from people with nicknames</label>
                 </div>
                 <ul id="messages">
-                    <li v-for="msg in chat" :style="{ display: (!only_show_nicknames || msg.nickname) ? '' : 'none' }">
-                        <span class="nickname" :style="{ color: compute_color(msg.username) }">[[ msg.nickname || msg.username ]]</span>
-                        <span class="colon">: </span>
-                        <span class="chat_text">[[ msg.text ]]</span>
+                    <li v-for="msg in chat">
+                        <!-- TODO: get the correct username color from twitch -->
+                        <span :style="{ color: compute_color(msg.username), 'font-weight': 'bold' }">[[ msg.username ]]</span>
+                        <span>: </span>
+                        <span>[[ msg.text ]]</span>
                     </li>
                 </ul>
             </div>
@@ -144,10 +100,7 @@ createApp({
         socket: undefined,
         channel: undefined,
         channels: undefined,
-        max_nickname_length: undefined,
-        nicknames: {},
         chat: [],
-        only_show_nicknames: true,
         accessToken: '{{accessToken}}',
         refreshToken: '{{refreshToken}}',
         display_name: '{{display_name}}',
@@ -155,10 +108,6 @@ createApp({
         loggedIn: '{{login}}' !== '',
         profile_image_url: '{{profile_image_url}}',
         is_super_admin: '{{is_super_admin}}' === 'true',
-        editing_username: undefined,
-        editing_nickname: '',
-        new_nickname: '',
-        new_username: '',
     }},
     methods: {
         compute_color(text) {
@@ -171,20 +120,6 @@ createApp({
         socket_error() {
             console.log('socket error');
         },
-        socket_nickname(msg) {
-            console.log('nickname: ', msg);
-            if (msg.nickname === undefined) {
-                delete this.nicknames[msg.username];
-            } else {
-                this.nicknames[msg.username] = msg.nickname;
-            }
-            this.chat.map(m => {
-                if (m.username === msg.username) {
-                    m.nickname = msg.nickname;
-                }
-                return m;
-            })
-        },
         socket_chat(msg) {
             console.log('chat: ', msg);
             this.chat.push(msg);
@@ -195,9 +130,6 @@ createApp({
         },
         socket_event(msg) {
             console.log('event: ', msg);
-            if (msg.channel === this.channel && msg.max_nickname_length !== undefined) {
-                this.max_nickname_length = msg.max_nickname_length;
-            }
             if(msg.channel && msg.enabled !== undefined){
                 console.log(msg.channel, msg.enabled, this.channels);
                 this.get_channels();
@@ -224,48 +156,6 @@ createApp({
             });
             // .then(this.get_channels());
         },
-        get_max_nickname_length() {
-            fetch('/max_nickname_length?channel=' + encodeURIComponent(this.channel))
-            .then(res => res.json())
-            .then(json => this.max_nickname_length = json);
-        },
-        save_nickname() {
-            fetch_post('/nickname', {
-                channel: this.channel,
-                username: this.editing_username,
-                nickname: this.editing_nickname,
-            })
-            .then(this.editing_username = undefined);
-        },
-        add_nickname() {
-            fetch_post('/nickname', {
-                channel: this.channel,
-                username: this.new_username,
-                nickname: this.new_nickname,
-            })
-            .then(() => {
-                this.new_username = '';
-                this.new_nickname = '';
-            });
-        },
-        delete_nickname(username) {
-            fetch_post('/nickname', {
-                channel: this.channel,
-                username: username,
-                nickname: undefined,
-            })
-            .then(() => {
-                delete this.nicknames[username];
-            });
-        },
-        set_max_nickname_length() {
-            if (this.max_nickname_length !== '') {
-                fetch_post('/max_nickname_length', {
-                    channel: this.channel,
-                    max_nickname_length: this.max_nickname_length,
-                });
-            }
-        },
         custom_channel() {
             this.channel = prompt('enter channel name').toLowerCase();
         },
@@ -284,12 +174,10 @@ createApp({
     watch: {
         channel(new_channel, old_channel) {
             window.location = '#' + new_channel;
-            this.get_max_nickname_length();
             if (this.socket) {
                 this.socket.disconnect();
             }
             this.chat = []
-            this.nicknames = {}
 
             if (this.channel) {
                 this.socket = io();
@@ -298,8 +186,7 @@ createApp({
                 this.socket.on('connect_failed', this.socket_error);
                 this.socket.on('disconnect', this.socket_error);
 
-                console.log('LISTENING ON:', new_channel + '/nickname', new_channel + '/chat', 'events');
-                this.socket.on(new_channel + '/nickname', this.socket_nickname);
+                console.log('LISTENING ON:', new_channel + '/chat', 'events');
                 this.socket.on(new_channel + '/chat', this.socket_chat);
                 this.socket.on('events', this.socket_event);
             }

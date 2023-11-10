@@ -45,31 +45,10 @@ body {
     font-weight: bold;
 }
 
-#nicknames {
-    list-style-type: none;
-    font-weight: bold;
-    padding: 10px;
-}
-
-#nicknames_container {
+#left_container {
     width: 50%;
 }
 
-.edit {
-    font-size: larger;
-    color: white;
-}
-.delete {
-    color: white;
-}
-
-.nickname {
-    font-family: 'Courier New', Courier, monospace;
-    font-weight: bold;
-}
-.equals {
-    color: white
-}
 
 #chat {
     width: 50%;
@@ -81,14 +60,14 @@ body {
     background: #18181B;
 }
 #chat-header {
-    height: 100px;
+    height: 50px;
 }
 #messages {
     list-style-type: none;
     margin: 0;
     padding: 0;
     height: 100%;
-    height: calc(100vh - 100px);
+    height: calc(100vh - 50px);
     overflow-y: scroll;
     word-wrap: break-word;
     background: #18181B;

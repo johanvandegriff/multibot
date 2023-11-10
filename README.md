@@ -1,3 +1,5 @@
+Note: this readme is out of date and will be updated when the bot is done. TODO
+
 # twitch-nickname-bot
 This is a twitch bot that allows chat members to set a nickname, then it will greet them using that nickname, and the bot will reply when mentioned or replied to. 
 
