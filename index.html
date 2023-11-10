@@ -1,203 +1,325 @@
 <!doctype html>
 <html>
-    <head>
-        <title>twitch integration</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" type="text/css" href="/static/style.css">
-    </head>
-    <body>
-        <div id="app">
-            <div id="login">
-                <span v-if="loggedIn">
-                    <img :src="profile_image_url" />
-                    <div style="float: right">
-                        <span v-if="is_super_admin" id="super_admin">SUPER ADMIN</span>
-                        &nbsp;
-                        <a :href="'/logout?returnTo=' + encodeURIComponent('#' + channel)">log out</a>
-                        &nbsp;
-                    </div>
+
+<head>
+    <title>twitch integration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            /* box-sizing: border-box; */
+        }
+
+        /*temp border*/
+        /* div {
+            border: 1px red;
+            border-style: dashed;
+        } */
+
+        html {
+            height: 100%;
+        }
+
+        body {
+            height: 100%;
+            line-height: 1.6;
+            font-size: 18px;
+            background-color: #333;
+            color: white;
+        }
+
+        #login {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 1;
+            border: 1px solid white;
+            /* padding: 2px 0px 0px 2px; */
+            margin: 0px 1px;
+            height: 30px;
+        }
+
+        #login img {
+            height: 30px;
+        }
+
+        #super_admin {
+            border: 1px solid red;
+            border-radius: 5px;
+            background-color: #611;
+            padding: 4px 4px 3px 4px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        #left_container {
+            width: 50%;
+        }
+
+
+        #chat {
+            width: 50%;
+            height: 100%;
+            float: right;
+            right: 0;
+            top: 0;
+            position: fixed;
+            background: #18181B;
+        }
+
+        #chat-header {
+            height: 50px;
+        }
+
+        #messages {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            height: calc(100vh - 50px);
+            overflow-y: scroll;
+            word-wrap: break-word;
+            background: #18181B;
+        }
+
+        #messages li {
+            padding: 2px 10px;
+        }
+
+        /* #messages li:nth-child(odd) {
+            background: #eee;
+        } */
+
+        #about {
+            padding: 5px;
+        }
+
+        a:link {
+            color: DeepSkyBlue;
+            background-color: transparent;
+        }
+
+        a:visited {
+            color: Magenta;
+            background-color: transparent;
+            text-decoration: none;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            line-height: 1.2
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="login">
+            <span v-if="loggedIn">
+                <img :src="profile_image_url" />
+                <div style="float: right">
+                    <span v-if="is_super_admin" id="super_admin">SUPER ADMIN</span>
+                    &nbsp;
+                    <a :href="'/logout?returnTo=' + encodeURIComponent('#' + channel)">log out</a>
+                    &nbsp;
+                </div>
+            </span>
+            <span v-else>
+                &nbsp;
+                for streamers:
+                <a href="/auth/twitch">log in</a>
+                &nbsp;
+            </span>
+        </div>
+        <div id="left_container">
+            <h1>Settings</h1>
+            <p v-if="channels">
+                Channel:
+
+                <select v-model="channel">
+                    <option selected :value="channel">[[ channel ]]</option>
+                    <option v-if="loggedIn && channel !== login && !channels.includes(login)" :value="login">[[ login ]]
+                    </option>
+                    <option v-if="is_super_admin" v-for="c in all_channels.filter(c => c !== channel)" :value="c">[[ c
+                        ]]</option>
+                    <option v-else v-for="c in channels.filter(c => c !== channel)" :value="c">[[ c ]]</option>
+                </select>
+                <button @click="custom_channel">custom</button>
+            </p>
+            <p v-else>
+                Loading...
+            </p>
+            <span v-if="loggedIn && channels">
+                <span v-if="channel === login || is_super_admin">
+                    <p v-if="channels.includes(channel)" style="background-color: #292; padding: 5px">
+                        The bot is enabled on <span v-if="channel === login">your</span><span v-else>this</span> channel
+                        ([[ channel ]]). <button style="color: #d22; font-weight: bold"
+                            @click="set_enabled(false)">DISABLE</button>
+                    </p>
+                    <p v-else style="background-color: #d22; padding: 5px">
+                        The bot is NOT enabled on <span v-if="channel === login">your</span><span v-else>this</span>
+                        channel ([[ channel ]]). <button style="color: #d22; font-weight: bold"
+                            @click="set_enabled(true)">ENABLE</button>
+                    </p>
+                    <!-- TODO: set youtube channel here -->
                 </span>
                 <span v-else>
-                    &nbsp;
-                    for streamers:
-                    <a href="/auth/twitch">log in</a>
-                    &nbsp;
+                    <p style="background-color: #555; padding: 5px">
+                        logged in as
+                        <a :href="'#' + login">[[ login ]]</a>,
+                        viewing <span style="font-weight: bold;">[[ channel ]]</span>
+                    </p>
                 </span>
-            </div>
-            <div id="left_container">
-                <h1>Settings</h1>
-                <p v-if="channels">
-                    Channel:
-                    
-                    <select v-model="channel">
-                        <option selected :value="channel">[[ channel ]]</option>
-                        <option v-if="loggedIn && channel !== login && !channels.includes(login)" :value="login">[[ login ]]</option>
-                        <option v-if="is_super_admin" v-for="c in all_channels.filter(c => c !== channel)" :value="c">[[ c ]]</option>
-                        <option v-else v-for="c in channels.filter(c => c !== channel)" :value="c">[[ c ]]</option>
-                    </select>
-                    <button @click="custom_channel">custom</button>
-                </p>
-                <p v-else>
-                    Loading...
-                </p>
-                <span v-if="loggedIn && channels">
-                    <span v-if="channel === login || is_super_admin">
-                        <p v-if="channels.includes(channel)" style="background-color: #292; padding: 5px">
-                            The bot is enabled on <span v-if="channel === login">your</span><span v-else>this</span> channel ([[ channel ]]). <button style="color: #d22; font-weight: bold" @click="set_enabled(false)">DISABLE</button>
-                        </p>
-                        <p v-else style="background-color: #d22; padding: 5px">
-                            The bot is NOT enabled on <span v-if="channel === login">your</span><span v-else>this</span> channel ([[ channel ]]). <button style="color: #d22; font-weight: bold" @click="set_enabled(true)">ENABLE</button>
-                        </p>
-                        <!-- TODO: set youtube channel here -->
-                    </span>
-                    <span v-else>
-                        <p style="background-color: #555; padding: 5px">
-                            logged in as
-                            <a :href="'#' + login">[[ login ]]</a>,
-                            viewing <span style="font-weight: bold;">[[ channel ]]</span>
-                        </p>
-                    </span>
-                </span>
-            </div>
-
-            <div id="chat">
-                <div id="chat-header">
-                    <h2>Chat</h2>
-                </div>
-                <ul id="messages">
-                    <li v-for="msg in chat">
-                        <!-- TODO: get the correct username color from twitch -->
-                        <span :style="{ color: compute_color(msg.username), 'font-weight': 'bold' }">[[ msg.username ]]</span>
-                        <span>: </span>
-                        <span>[[ msg.text ]]</span>
-                    </li>
-                </ul>
-            </div>
+            </span>
         </div>
 
-        <script src="/socket.io/socket.io.js"></script>
-        <script src="/vue.js"></script>
-        <script src="/color-hash.js"></script>
+        <div id="chat">
+            <div id="chat-header">
+                <h2>Chat</h2>
+            </div>
+            <ul id="messages">
+                <li v-for="msg in chat">
+                    <!-- TODO: get the correct username color from twitch -->
+                    <span :style="{ color: compute_color(msg.username), 'font-weight': 'bold' }">[[ msg.username
+                        ]]</span>
+                    <span>: </span>
+                    <span>[[ msg.text ]]</span>
+                </li>
+            </ul>
+        </div>
+    </div>
 
-        <script>
-async function fetch_post(url, data) {
-    return fetch(url, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data),
-    });
-}
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/vue.js"></script>
+    <script src="/color-hash.js"></script>
 
-const { createApp, ref } = Vue
-
-createApp({
-    delimiters: ['[[', ']]'],
-    data() {return {
-        colorHash: new ColorHash({lightness: [0.5,0.6,0.7,0.8], saturation: [0.6,0.7,0.8,0.9,1]}),
-        socket: undefined,
-        channel: undefined,
-        channels: undefined,
-        chat: [],
-        accessToken: '{{accessToken}}',
-        refreshToken: '{{refreshToken}}',
-        display_name: '{{display_name}}',
-        login: '{{login}}',
-        loggedIn: '{{login}}' !== '',
-        profile_image_url: '{{profile_image_url}}',
-        is_super_admin: '{{is_super_admin}}' === 'true',
-    }},
-    methods: {
-        compute_color(text) {
-            return this.colorHash.hex(text+"....");
-        },
-        socket_connect() {
-            console.log('socket connected');
-            this.socket.emit('init', {'channel': this.channel});
-        },
-        socket_error() {
-            console.log('socket error');
-        },
-        socket_chat(msg) {
-            console.log('chat: ', msg);
-            this.chat.push(msg);
-            const messages = document.querySelector('#messages');
-            this.$nextTick(() => {
-                messages.scrollTo(0, messages.scrollHeight);
+    <script>
+        async function fetch_post(url, data) {
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data),
             });
-        },
-        socket_event(msg) {
-            console.log('event: ', msg);
-            if(msg.channel && msg.enabled !== undefined){
-                console.log(msg.channel, msg.enabled, this.channels);
-                this.get_channels();
-            }
-        },
-        load_from_local_url() {
-            this.channel = window.location.href.split('#')[1]?.toLowerCase();
-            if (this.channel) {
-                window.location = '#' + this.channel;
-            }
-        },
-        get_channels() {
-            fetch('/channels')
-            .then(res => res.json())
-            .then(json => {
-                this.all_channels = json.all_channels;
-                this.channels = json.channels;
-            });
-        },
-        set_enabled(isEnabled) {
-            fetch_post('/enabled', {
-                channel: this.channel,
-                isEnabled: isEnabled,
-            });
-            // .then(this.get_channels());
-        },
-        custom_channel() {
-            this.channel = prompt('enter channel name').toLowerCase();
-        },
-    },
-    mounted() {
-        this.get_channels();
-        this.load_from_local_url();
-        //whenever the user goes forward/back in history, re-read from the local url
-        addEventListener('popstate', event => {
-            this.load_from_local_url();
-        });
-        if (!this.channel && this.loggedIn) {
-            window.location = '#' + this.display_name.toLowerCase();
         }
-    },
-    watch: {
-        channel(new_channel, old_channel) {
-            window.location = '#' + new_channel;
-            if (this.socket) {
-                this.socket.disconnect();
-            }
-            this.chat = []
 
-            if (this.channel) {
-                this.socket = io();
+        const { createApp, ref } = Vue
 
-                this.socket.on('connect', this.socket_connect);
-                this.socket.on('connect_failed', this.socket_error);
-                this.socket.on('disconnect', this.socket_error);
+        createApp({
+            delimiters: ['[[', ']]'],
+            data() {
+                return {
+                    colorHash: new ColorHash({ lightness: [0.5, 0.6, 0.7, 0.8], saturation: [0.6, 0.7, 0.8, 0.9, 1] }),
+                    socket: undefined,
+                    channel: undefined,
+                    channels: undefined,
+                    chat: [],
+                    accessToken: '{{accessToken}}',
+                    refreshToken: '{{refreshToken}}',
+                    display_name: '{{display_name}}',
+                    login: '{{login}}',
+                    loggedIn: '{{login}}' !== '',
+                    profile_image_url: '{{profile_image_url}}',
+                    is_super_admin: '{{is_super_admin}}' === 'true',
+                }
+            },
+            methods: {
+                compute_color(text) {
+                    return this.colorHash.hex(text + "....");
+                },
+                socket_connect() {
+                    console.log('socket connected');
+                    this.socket.emit('init', { 'channel': this.channel });
+                },
+                socket_error() {
+                    console.log('socket error');
+                },
+                socket_chat(msg) {
+                    console.log('chat: ', msg);
+                    this.chat.push(msg);
+                    const messages = document.querySelector('#messages');
+                    this.$nextTick(() => {
+                        messages.scrollTo(0, messages.scrollHeight);
+                    });
+                },
+                socket_event(msg) {
+                    console.log('event: ', msg);
+                    if (msg.channel && msg.enabled !== undefined) {
+                        console.log(msg.channel, msg.enabled, this.channels);
+                        this.get_channels();
+                    }
+                },
+                load_from_local_url() {
+                    this.channel = window.location.href.split('#')[1]?.toLowerCase();
+                    if (this.channel) {
+                        window.location = '#' + this.channel;
+                    }
+                },
+                get_channels() {
+                    fetch('/channels')
+                        .then(res => res.json())
+                        .then(json => {
+                            this.all_channels = json.all_channels;
+                            this.channels = json.channels;
+                        });
+                },
+                set_enabled(isEnabled) {
+                    fetch_post('/enabled', {
+                        channel: this.channel,
+                        isEnabled: isEnabled,
+                    });
+                    // .then(this.get_channels());
+                },
+                custom_channel() {
+                    this.channel = prompt('enter channel name').toLowerCase();
+                },
+            },
+            mounted() {
+                this.get_channels();
+                this.load_from_local_url();
+                //whenever the user goes forward/back in history, re-read from the local url
+                addEventListener('popstate', event => {
+                    this.load_from_local_url();
+                });
+                if (!this.channel && this.loggedIn) {
+                    window.location = '#' + this.display_name.toLowerCase();
+                }
+            },
+            watch: {
+                channel(new_channel, old_channel) {
+                    window.location = '#' + new_channel;
+                    if (this.socket) {
+                        this.socket.disconnect();
+                    }
+                    this.chat = []
 
-                console.log('LISTENING ON:', new_channel + '/chat', 'events');
-                this.socket.on(new_channel + '/chat', this.socket_chat);
-                this.socket.on('events', this.socket_event);
-            }
-        },
-    },
-    // computed: {
-    //     dropdown_channels() {
-    //         return [];
-    //     }
-    // }
-}).mount('#app')
-        </script>
-    </body>
+                    if (this.channel) {
+                        this.socket = io();
+
+                        this.socket.on('connect', this.socket_connect);
+                        this.socket.on('connect_failed', this.socket_error);
+                        this.socket.on('disconnect', this.socket_error);
+
+                        console.log('LISTENING ON:', new_channel + '/chat', 'events');
+                        this.socket.on(new_channel + '/chat', this.socket_chat);
+                        this.socket.on('events', this.socket_event);
+                    }
+                },
+            },
+            // computed: {
+            //     dropdown_channels() {
+            //         return [];
+            //     }
+            // }
+        }).mount('#app')
+    </script>
+</body>
+
 </html>

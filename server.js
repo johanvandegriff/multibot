@@ -1,28 +1,30 @@
-const CHAT_HISTORY_LENGTH = 100;
-const chat_history = {};
-
 const http = require('http');
 const https = require('https');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const fs = require('fs');
+const express = require('express');
+const session = require('express-session');
+const passport = require('passport');
+const OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
+const request = require('request');
+const handlebars = require('handlebars');
 const { JsonDB, Config } = require('node-json-db');
-var bodyParser = require('body-parser')
-var jsonParser = bodyParser.json()
+const bodyParser = require('body-parser')
+
 
 dotenv.config({ path: '/srv/secret-twitch.env' }) //bot API key and other info
+const DEFAULT_PORT = 8080;
+const JSON_DB_FILE = '/srv/channels.json';
+const CHAT_HISTORY_LENGTH = 100;
+const chat_history = {};
+const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
+
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
-// Define our dependencies
-var express = require('express');
-var session = require('express-session');
-var passport = require('passport');
-var OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
-var request = require('request');
-var handlebars = require('handlebars');
-
 // Initialize Express and middlewares
-var app = express();
+const app = express();
+const jsonParser = bodyParser.json()
 const server = http.createServer(app);
 const io = require('socket.io')(server);
 app.use(session({ secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false }));
@@ -32,7 +34,7 @@ app.use(passport.session());
 
 // Override passport profile function to get user profile from Twitch API
 OAuth2Strategy.prototype.userProfile = function (accessToken, done) {
-    var options = {
+    const options = {
         url: 'https://api.twitch.tv/helix/users',
         method: 'GET',
         headers: {
@@ -59,8 +61,6 @@ passport.deserializeUser(function (user, done) {
     done(null, user);
 });
 
-
-const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
 
 passport.use('twitch', new OAuth2Strategy({
     authorizationURL: 'https://id.twitch.tv/oauth2/authorize',
@@ -95,7 +95,7 @@ app.get('/auth/twitch', passport.authenticate('twitch', { scope: ['user_read'] }
 app.get('/auth/twitch/callback', passport.authenticate('twitch', { successRedirect: '/', failureRedirect: '/' }));
 
 // Define a simple template to safely generate HTML with values from user's profile
-var template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
+const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
 app.get('/', function (req, res) {
@@ -119,17 +119,12 @@ app.get('/logout', function (req, res, next) {
 
 
 //expose js libraries to client so they can run in the browser
-app.get('/favicon.ico', (req, res) => { res.sendFile(__dirname + '/favicon.ico') });
-app.get('/favicon.png', (req, res) => { res.sendFile(__dirname + '/favicon.png') });
 app.get('/vue.js', (req, res) => { res.sendFile(__dirname + '/node_modules/vue/dist/vue.global.prod.js') });
 app.get('/color-hash.js', (req, res) => { res.sendFile(__dirname + '/node_modules/color-hash/dist/color-hash.js') });
-
-//expose the static dir with CSS and images
-app.use('/static', express.static('static'));
+app.get('/favicon.ico', (req, res) => { res.sendFile(__dirname + '/favicon.ico') });
+app.get('/favicon.png', (req, res) => { res.sendFile(__dirname + '/favicon.png') });
 
 //expose the list of channels
-app.get('/channels.json', (req, res) => { res.sendFile('/srv/channels.json') });
-
 app.get('/channels', async (req, res) => { res.send(JSON.stringify({ channels: await getEnabledChannels(), all_channels: await getChannels() })) });
 
 app.post('/enabled', jsonParser, async (req, res) => {
@@ -156,7 +151,7 @@ app.post('/enabled', jsonParser, async (req, res) => {
 // If you set the second argument to false, you'll have to call the save() method.
 // The third argument is used to ask JsonDB to save the database in a human readable format. (default false)
 // The last argument is the separator. By default it's slash (/)
-var db = new JsonDB(new Config("/srv/channels", true, true, '/'));
+const db = new JsonDB(new Config(JSON_DB_FILE, true, true, '/'));
 
 async function getChannels() {
     try {
@@ -294,9 +289,8 @@ async function handleCommand(target, context, msg, username) {
 
 
 //start the http server
-var default_port = 8080;
-server.listen(process.env.PORT || default_port, () => {
-    console.log('listening on *:' + (process.env.PORT || default_port));
+server.listen(process.env.PORT || DEFAULT_PORT, () => {
+    console.log('listening on *:' + (process.env.PORT || DEFAULT_PORT));
 });
 
 
