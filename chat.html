@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>{{ channel }} - chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
+</head>
+
+<body :style="{ 'background-color': [[ bgcolor ]] }">
+    <div id="app">
+        <div id="chat_fullscreen">
+            <ul id="messages" :style="{ 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' }">
+                <li v-for="msg in chat">
+                    <!-- TODO: get the correct username color from twitch -->
+                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[ msg.username
+                        ]]</span>
+                    <span>: </span>
+                    <span>[[ msg.text ]]</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/vue.js"></script>
+    <script src="/color-hash.js"></script>
+
+
+    <script>
+        const { createApp, ref } = Vue
+
+        createApp({
+            delimiters: ['[[', ']]'],
+            data() {
+                return {
+                    colorHash: new ColorHash({ lightness: [0.5, 0.6, 0.7, 0.8], saturation: [0.6, 0.7, 0.8, 0.9, 1] }),
+                    socket: undefined,
+                    channel: '{{ channel }}',
+                    bgcolor: '{{ bgcolor }}',
+                    chat: [],
+                }
+            },
+            methods: {
+                compute_color(text) {
+                    return this.colorHash.hex(text + "....");
+                },
+                socket_connect() {
+                    console.log('socket connected');
+                    this.socket.emit('init', { 'channel': this.channel });
+                },
+                socket_error() {
+                    console.log('socket error');
+                },
+                socket_chat(msg) {
+                    console.log('chat: ', msg);
+                    this.chat.push(msg);
+                    const messages = document.querySelector('#messages');
+                    this.$nextTick(() => {
+                        messages.scrollTo(0, messages.scrollHeight);
+                    });
+                },
+            },
+            mounted() {
+                this.socket = io();
+                this.socket.on('connect', this.socket_connect);
+                this.socket.on('connect_failed', this.socket_error);
+                this.socket.on('disconnect', this.socket_error);
+
+                console.log('LISTENING ON:', this.channel + '/chat');
+                this.socket.on(this.channel + '/chat', this.socket_chat);
+            },
+        }).mount('#app')
+    </script>
+</body>
+
+</html>

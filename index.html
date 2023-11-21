@@ -4,117 +4,7 @@
 <head>
     <title>twitch integration</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            /* box-sizing: border-box; */
-        }
-
-        /*temp border*/
-        /* div {
-            border: 1px red;
-            border-style: dashed;
-        } */
-
-        html {
-            height: 100%;
-        }
-
-        body {
-            height: 100%;
-            line-height: 1.6;
-            font-size: 18px;
-            background-color: #333;
-            color: white;
-        }
-
-        #login {
-            position: absolute;
-            top: 0;
-            right: 0;
-            z-index: 1;
-            border: 1px solid white;
-            /* padding: 2px 0px 0px 2px; */
-            margin: 0px 1px;
-            height: 30px;
-        }
-
-        #login img {
-            height: 30px;
-        }
-
-        #super_admin {
-            border: 1px solid red;
-            border-radius: 5px;
-            background-color: #611;
-            padding: 4px 4px 3px 4px;
-            font-family: 'Courier New', Courier, monospace;
-            font-weight: bold;
-        }
-
-        #left_container {
-            width: 50%;
-        }
-
-
-        #chat {
-            width: 50%;
-            height: 100%;
-            float: right;
-            right: 0;
-            top: 0;
-            position: fixed;
-            background: #18181B;
-        }
-
-        #chat-header {
-            height: 50px;
-        }
-
-        #messages {
-            list-style-type: none;
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            height: calc(100vh - 50px);
-            overflow-y: scroll;
-            word-wrap: break-word;
-            background: #18181B;
-        }
-
-        #messages li {
-            padding: 2px 10px;
-        }
-
-        /* #messages li:nth-child(odd) {
-            background: #eee;
-        } */
-
-        #about {
-            padding: 5px;
-        }
-
-        a:link {
-            color: DeepSkyBlue;
-            background-color: transparent;
-        }
-
-        a:visited {
-            color: Magenta;
-            background-color: transparent;
-            text-decoration: none;
-        }
-
-        h1,
-        h2,
-        h3,
-        h4,
-        h5,
-        h6 {
-            line-height: 1.2
-        }
-    </style>
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
 </head>
 
 <body>
@@ -166,7 +56,13 @@
                         channel ([[ channel ]]). <button style="color: #d22; font-weight: bold"
                             @click="set_enabled(true)">ENABLE</button>
                     </p>
-                    <!-- TODO: set youtube channel here -->
+                    enter youtube channel URL or ID: <input type="text" v-model="youtube_input" />
+                    <button @click="find_youtube_id">find channel</button>
+                    <span v-if="youtube_id && youtube_id.length > 0">(youtube channel connected: <a
+                            :href="'https://www.youtube.com/channel/' + youtube_id">[[ youtube_id ]]</a>)
+                        <button @click="set_youtube_id('')">disconnect</button>
+                    </span>
+                    <span v-else>(no youtube channel connected)</span>
                 </span>
                 <span v-else>
                     <p style="background-color: #555; padding: 5px">
@@ -181,12 +77,15 @@
         <div id="chat">
             <div id="chat-header">
                 <h2>Chat</h2>
+                <a style="top: 0; position: absolute; left: 100px" target="_blank"
+                    :href="'/chat?channel=' + channel">pop-out<img style="width:20px"
+                        src="/static/external-link-ltr-icon.svg" alt="popout chat" /></a>
             </div>
             <ul id="messages">
                 <li v-for="msg in chat">
                     <!-- TODO: get the correct username color from twitch -->
-                    <span :style="{ color: compute_color(msg.username), 'font-weight': 'bold' }">[[ msg.username
-                        ]]</span>
+                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[
+                        msg.username ]]</span>
                     <span>: </span>
                     <span>[[ msg.text ]]</span>
                 </li>
@@ -228,6 +127,8 @@
                     loggedIn: '{{login}}' !== '',
                     profile_image_url: '{{profile_image_url}}',
                     is_super_admin: '{{is_super_admin}}' === 'true',
+                    youtube_input: '',
+                    youtube_id: '',
                 }
             },
             methods: {
@@ -280,6 +181,44 @@
                 custom_channel() {
                     this.channel = prompt('enter channel name').toLowerCase();
                 },
+                get_youtube_id() {
+                    fetch('/youtube_id?channel=' + encodeURIComponent(this.channel))
+                        .then(res => res.text())
+                        .then(text => this.youtube_id = text);
+                },
+                find_youtube_id() {
+                    this.youtube_id = '';
+                    console.log(this.youtube_input);
+                    // https://www.youtube.com/channel/UCmrLaVZneWG3kJyPqp-RFJQ
+                    const regex = /(UC[-_a-zA-Z0-9]{22})/;
+                    const match = regex.exec(this.youtube_input);
+                    if (match) {
+                        this.youtube_id = match[1];
+                    } else {
+                        fetch('/find_youtube_id?channel=' + encodeURIComponent(this.youtube_input))
+                            .then(res => res.text())
+                            .then(text => {
+                                if (text === 'invalid') {
+                                    alert('Invalid channel handle, URL, or ID');
+                                } else if (text === 'error') {
+                                    alert('Error finding channel ID. If this is broken, look online for how to find your channel ID and enter it here directly');
+                                } else {
+                                    this.set_youtube_id(text);
+                                }
+                            });
+                    }
+                },
+                set_youtube_id(id) {
+                    fetch_post('/youtube_id', { channel: this.channel, youtube_id: id })
+                        .then(res => res.text())
+                        .then(text => {
+                            if (text === 'ok') {
+                                this.youtube_id = id;
+                            } else {
+                                alert('Error setting youtube ID');
+                            }
+                        });
+                },
             },
             mounted() {
                 this.get_channels();
@@ -301,6 +240,7 @@
                     this.chat = []
 
                     if (this.channel) {
+                        this.get_youtube_id();
                         this.socket = io();
 
                         this.socket.on('connect', this.socket_connect);
