@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>twitch integration</title>
+    <title>JJ's Cool Bot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="/static/style.css">
 </head>
@@ -27,7 +27,7 @@
             </span>
         </div>
         <div id="left_container">
-            <h1>Settings</h1>
+            <h1>JJ's Cool Bot</h1>
             <p v-if="channels">
                 Channel:
 
@@ -63,6 +63,18 @@
                         <button @click="set_youtube_id('')">disconnect</button>
                     </span>
                     <span v-else>(no youtube channel connected)</span>
+
+                    <p>
+                    <h2>Forward Commands from Youtube to Twitch</h2>
+                    <ul>
+                        <li v-for="cmd, i in fwd_cmds_yt_twitch"><input type="text" v-model="cmd" />
+                            <button @click="fwd_cmds_yt_twitch.splice(i, 1); send_cmds();">&nbsp; x &nbsp;</button>
+                        </li>
+                        <li><button @click="send_cmds">save</button></li>
+                        <li><button @click="fwd_cmds_yt_twitch.push(new_cmd); new_cmd = ''; send_cmds();">add
+                                new:</button><input type="text" v-model="new_cmd" /></li>
+                    </ul>
+                    </p>
                 </span>
                 <span v-else>
                     <p style="background-color: #555; padding: 5px">
@@ -83,7 +95,7 @@
             </div>
             <ul id="messages">
                 <li v-for="msg in chat">
-                    <!-- TODO: get the correct username color from twitch -->
+                    <!-- TODO: get the correct username color from youtube -->
                     <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[
                         msg.username ]]</span>
                     <span>: </span>
@@ -129,6 +141,8 @@
                     is_super_admin: '{{is_super_admin}}' === 'true',
                     youtube_input: '',
                     youtube_id: '',
+                    fwd_cmds_yt_twitch: [],
+                    new_cmd: '',
                 }
             },
             methods: {
@@ -155,6 +169,10 @@
                     if (msg.channel && msg.enabled !== undefined) {
                         console.log(msg.channel, msg.enabled, this.channels);
                         this.get_channels();
+                    }
+                    if (msg.channel && msg.fwd_cmds_yt_twitch !== undefined) {
+                        console.log(msg.channel, msg.fwd_cmds_yt_twitch);
+                        this.fwd_cmds_yt_twitch = msg.fwd_cmds_yt_twitch;
                     }
                 },
                 load_from_local_url() {
@@ -193,7 +211,7 @@
                     const regex = /(UC[-_a-zA-Z0-9]{22})/;
                     const match = regex.exec(this.youtube_input);
                     if (match) {
-                        this.youtube_id = match[1];
+                        this.set_youtube_id(match[1]);
                     } else {
                         fetch('/find_youtube_id?channel=' + encodeURIComponent(this.youtube_input))
                             .then(res => res.text())
@@ -218,6 +236,9 @@
                                 alert('Error setting youtube ID');
                             }
                         });
+                },
+                send_cmds() {
+                    fetch_post('/fwd_cmds_yt_twitch', { channel: this.channel, fwd_cmds_yt_twitch: this.fwd_cmds_yt_twitch });
                 },
             },
             mounted() {
@@ -250,6 +271,13 @@
                         console.log('LISTENING ON:', new_channel + '/chat', 'events');
                         this.socket.on(new_channel + '/chat', this.socket_chat);
                         this.socket.on('events', this.socket_event);
+
+                        fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
+                            .then(res => res.json())
+                            .then(json => this.chat = json);
+                        fetch('/fwd_cmds_yt_twitch?channel=' + encodeURIComponent(this.channel))
+                            .then(res => res.json())
+                            .then(json => this.fwd_cmds_yt_twitch = json);
                     }
                 },
             },

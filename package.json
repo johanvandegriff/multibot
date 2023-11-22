@@ -19,6 +19,7 @@
         "node-json-db": "^2.3.0",
         "passport": "^0.6.0",
         "passport-oauth": "^1.0.0",
+        "profanity-filter": "^0.2.1",
         "request": "^2.88.2",
         "socket.io": "^4.5.2",
         "tmi.js": "^1.8.5",

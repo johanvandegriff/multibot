@@ -12,8 +12,9 @@
         <div id="chat_fullscreen">
             <ul id="messages" :style="{ 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' }">
                 <li v-for="msg in chat">
-                    <!-- TODO: get the correct username color from twitch -->
-                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[ msg.username
+                    <!-- TODO: get the correct username color from youtube -->
+                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[
+                        msg.username
                         ]]</span>
                     <span>: </span>
                     <span>[[ msg.text ]]</span>
@@ -69,6 +70,10 @@
 
                 console.log('LISTENING ON:', this.channel + '/chat');
                 this.socket.on(this.channel + '/chat', this.socket_chat);
+
+                fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
+                    .then(res => res.json())
+                    .then(json => this.chat = json);
             },
         }).mount('#app')
     </script>

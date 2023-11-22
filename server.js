@@ -3,6 +3,7 @@ const https = require('https');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { LiveChat } = require("youtube-chat"); //youtube chat https://github.com/LinaTsukusu/youtube-chat#readme
+const { google } = require('googleapis');
 const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
@@ -12,15 +13,20 @@ const request = require('request');
 const handlebars = require('handlebars');
 const { JsonDB, Config } = require('node-json-db');
 const bodyParser = require('body-parser')
+// var Filter = require('bad-words'),
+// filter = new Filter();
+var filter = require('profanity-filter');
+filter.seed('profanity');
+filter.isProfane = (s) => s !== filter.clean(s);
 
 
-dotenv.config({ path: '/srv/secret-twitch.env' }) //bot API key and other info
+dotenv.config({ path: '/srv/secret.env' }) //bot API key and other info
 const DEFAULT_PORT = 8080;
 const JSON_DB_FILE = '/srv/channels.json';
 const CHAT_HISTORY_LENGTH = 100;
 const chat_history = {};
 const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
-const YT_COMMANDS_TO_FWD = ['!sr', '!test']; //TODO make this configurable by streamer
+const DEFAULT_FWD_CMDS_YT_TWITCH = ['!sr', '!test'];
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
@@ -134,6 +140,13 @@ app.get('/chat', (req, res) => { res.send(chat_template({ channel: req.query.cha
 
 //expose the list of channels
 app.get('/channels', async (req, res) => { res.send(JSON.stringify({ channels: await getEnabledChannels(), all_channels: await getChannels() })) });
+app.get('/chat_history', async (req, res) => {
+    if (chat_history[req.query.channel]) {
+        res.send(JSON.stringify(chat_history[req.query.channel]));
+    } else {
+        res.send(JSON.stringify([]));
+    }
+});
 
 app.post('/enabled', jsonParser, async (req, res) => {
     const channel = req.body.channel;
@@ -150,6 +163,33 @@ app.post('/enabled', jsonParser, async (req, res) => {
             return;
         }
     }
+    console.log('auth error', req.body);
+    res.send('auth error');
+});
+
+app.get('/fwd_cmds_yt_twitch', async (req, res) => { res.send(await getFwdCmdsYtTwitch(req.query.channel)) });
+app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
+    console.log(req.body)
+    const channel = req.body.channel;
+    if (req.session && req.session.passport && req.session.passport.user) {
+        const is_super_admin = req.session.passport.user.is_super_admin;
+        const login = req.session.passport.user.login;
+
+        if (login === channel || is_super_admin) {
+            console.log('auth success', req.body, login);
+            if (Array.isArray(req.body.fwd_cmds_yt_twitch)) {
+                await setFwdCmdsYtTwitch(channel, req.body.fwd_cmds_yt_twitch);
+                send_event({ channel: channel, fwd_cmds_yt_twitch: req.body.fwd_cmds_yt_twitch });
+                res.send('ok');
+                return;
+            } else {
+                console.log('expected array', req.body);
+                res.send('expected array');
+                return
+            }
+        }
+    }
+    send_event({ channel: channel, fwd_cmds_yt_twitch: await getFwdCmdsYtTwitch(channel) });
     console.log('auth error', req.body);
     res.send('auth error');
 });
@@ -251,12 +291,22 @@ async function getYoutubeId(channel) {
 async function setYoutubeId(channel, youtube_id) {
     const old_youtube_id = await getYoutubeId(channel);
     if (old_youtube_id !== youtube_id) {
-        if (youtube_chats[old_youtube_id]) {
-            youtube_chats[old_youtube_id].stop();
-        }
+        delete youtube_chats[youtube_id];
         await db.push('/channels/' + channel + '/youtube_id/', youtube_id);
         // connect_to_youtube(channel);
     }
+}
+
+async function getFwdCmdsYtTwitch(channel) {
+    try {
+        return await db.getData('/channels/' + channel + '/fwd_cmds_yt_twitch');
+    } catch (error) {
+        return DEFAULT_FWD_CMDS_YT_TWITCH;
+    }
+}
+
+async function setFwdCmdsYtTwitch(channel, fwd_cmds_yt_twitch) {
+    return await db.push('/channels/' + channel + '/fwd_cmds_yt_twitch', fwd_cmds_yt_twitch);
 }
 
 
@@ -271,25 +321,20 @@ io.on('connection', (socket) => {
     socket.on('init', async (msg) => {
         const channel = msg.channel;
         console.log(`[socket.io] INIT ${channel}`);
-        //replay the chat history
-        if (chat_history[channel]) {
-            chat_history[channel].forEach(msg => send_chat(channel, ...msg, true));
-        }
     });
 });
 
-function send_chat(channel, username, color, text, replaying) {
-    if (!replaying) {
-        if (!chat_history[channel]) {
-            chat_history[channel] = [];
-        }
-        chat_history[channel].push([username, color, text]);
-        if (chat_history[channel].length > CHAT_HISTORY_LENGTH) {
-            chat_history[channel].shift();
-        }
+function send_chat(channel, username, color, text) {
+    const iomsg = { username: username, color: color, text: text };
+    if (!chat_history[channel]) {
+        chat_history[channel] = [];
+    }
+    chat_history[channel].push(iomsg);
+    if (chat_history[channel].length > CHAT_HISTORY_LENGTH) {
+        chat_history[channel].shift();
     }
     console.log(`[socket.io] SEND CHAT ${username} (${color}): ${text}`);
-    io.emit(channel + '/chat', { username: username, color: color, text: text });
+    io.emit(channel + '/chat', iomsg);
 }
 
 function send_event(msg) {
@@ -344,7 +389,7 @@ async function onMessageHandler(target, context, msg, self) {
     if (context["message-type"] === "whisper") { return; }
 
     //forward message to socket chat
-    send_chat(channel, username, context.color, msg, false);
+    send_chat(channel, username, context.color, msg);
 
     if (self) { return; } // Ignore messages from the bot
     await handleCommand(target, context, msg, username);
@@ -361,7 +406,11 @@ async function handleCommand(target, context, msg, username) {
 
     var valid = true;
     // If the command is known, let's execute it
-    if (commandName === '!ytconnect') {
+    if (commandName === '!help') {
+        tmi_client.say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !ytconnect - connect to the youtube chat once you have started stream; !ytdisconnect - disconnect from the youtube chat`);
+    } else if (commandName === '!multichat') {
+        tmi_client.say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
+    } else if (commandName === '!ytconnect') {
         if (has_permission(context)) {
             connect_to_youtube(channel);
         }
@@ -382,18 +431,59 @@ async function handleCommand(target, context, msg, username) {
 
 
 //youtube chat stuff
+const youtube = google.youtube({
+    version: 'v3',
+    auth: process.env.YOUTUBE_API_KEY,
+});
+
+async function getLiveVideoId(channelId) {
+    return new Promise(async (resolve, reject) => {
+        const yt = new LiveChat({ channelId: channelId });
+        console.log(yt);
+        yt.on('start', (liveId) => {
+            console.log('[youtube] chat connection started with liveId:', liveId);
+            // tmi_client.say(channel, `connected to youtube chat: youtu.be/${liveId}`);
+            yt.stop();
+            resolve(liveId);
+        });
+        yt.on('end', (reason) => {
+            console.log('[youtube] chat connection ended with reason:', reason);
+            // tmi_client.say(channel, `disconnected from youtube chat`);
+        });
+        yt.on('chat', (chatItem) => {
+            console.log('[youtube] (temporary connection got a chat message) chatItem', chatItem);
+        });
+        yt.on('error', (err) => {
+            console.error('[youtube] chat connection ERROR:', err);
+            // tmi_client.say(channel, `youtube chat ERROR: ${err}`);
+        });
+        const ok = await yt.start()
+        if (!ok) {
+            console.error('[youtube] falied to connect to chat');
+            // tmi_client.say(channel, 'youtube falied to connect to chat');
+            resolve('');
+        }
+        setTimeout(() => {
+            yt.stop();
+            resolve('');
+        }, 10000); //stop after 10s if nothing happened
+    });
+}
+
 const youtube_chats = {
-    // 'UCmrLaVZneWG3kJyPqp-RFJQ': new LiveChat({ channelId: 'UCmrLaVZneWG3kJyPqp-RFJQ' })
+    // 'UCmrLaVZneWG3kJyPqp-RFJQ': {
+    //     getter: () => some function that fetches chat messages and processes them,
+    //     ids_seen: ['list of ids', 'already seen', 'so skip them if seen again']
+    // }
 };
 
 async function disconnect_from_youtube(channel) {
+    tmi_client.say(channel, `disconnecting from youtube chat`);
     const youtube_id = await getYoutubeId(channel);
     if (!youtube_id) {
         return;
     }
-    if (youtube_chats[youtube_id]) {
-        youtube_chats[youtube_id].stop();
-    }
+    delete youtube_chats[youtube_id];
 }
 
 async function connect_to_youtube(channel) { //TODO this is twitch channel, either refactor or rename var
@@ -401,100 +491,106 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
     if (!youtube_id) {
         return;
     }
-    if (youtube_chats[youtube_id]) {
-        youtube_chats[youtube_id].stop();
-    }
+    delete youtube_chats[youtube_id];
 
-    const yt = new LiveChat({ channelId: youtube_id }) //note: does not need the API key
-    youtube_chats[youtube_id] = yt;
-    yt.on('start', (liveId) => {
-        console.log('[youtube] chat connection started with liveId:', liveId);
-        tmi_client.say(channel, `connected to youtube chat: youtu.be/${liveId}`);
+    const liveVideoId = await getLiveVideoId(youtube_id);
+    console.log('[youtube] liveVideoId:', liveVideoId);
+    if (liveVideoId === '') {
+        console.error('[youtube] falied to find livestream');
+        tmi_client.say(channel, 'youtube falied to find livestream');
+        return;
+    }
+    console.log(`[youtube] connected to youtube chat: youtu.be/${liveVideoId}`);
+    tmi_client.say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`);
+
+    // https://www.googleapis.com/youtube/v3/videos?id=l-5QeLIn1FA&part=id,liveStreamingDetails&fields=items(id,liveStreamingDetails(activeLiveChatId))&maxResults=1&key=
+    // {
+    //   "items": [
+    //     {
+    //       "id": "l-5QeLIn1FA",
+    //       "liveStreamingDetails": {
+    //         "activeLiveChatId": "Cg0KC2wtNVFlTEluMUZBKicKGFVDYUcwSUhOMVJNT1o0LVUzd0RYQWt3QRILbC01UWVMSW4xRkE"
+    //       }
+    //     }
+    //   ]
+    // }
+    const videoResponse = await youtube.videos.list({
+        id: liveVideoId,
+        part: 'id,liveStreamingDetails',
+        fields: 'items(id,liveStreamingDetails(activeLiveChatId))',
+        maxResults: 1
     });
-    yt.on('end', (reason) => {
-        console.log('[youtube] chat connection ended with reason:', reason);
-        tmi_client.say(channel, `disconnected from youtube chat`);
-    });
-    // chat: ChatItem
-    yt.on('chat', (chatItem) => {
-        // console.log('chatItem', chatItem);
-        const timestamp = new Date(chatItem.timestamp);
-        const now = new Date();
-        const message_age = now - timestamp;
-        // console.log(message_age);
-        if (message_age > YOUTUBE_MAX_MESSAGE_AGE) {
-            return;
-        }
-        const author = chatItem.author.name;
-        var message = undefined;
-        chatItem.message.forEach(m => {
-            if (m.text !== undefined) {
-                message = m.text;
-                /*
-                { text: 'asdf' }
-                */
+
+    if (videoResponse.data.items.length !== 1) {
+        console.error('[youtube] falied to find livestream info');
+        tmi_client.say(channel, 'youtube falied to find livestream info');
+        return;
+    }
+    const liveChatId = videoResponse.data.items[0].liveStreamingDetails.activeLiveChatId;
+    console.log('[youtube] liveChatId:', liveChatId);
+
+    const get_messages = async (ids_seen) => {
+        // Get live chat messages
+        const chatResponse = await youtube.liveChatMessages.list({
+            liveChatId: liveChatId,
+            part: 'snippet, authorDetails'
+        });
+        // console.log(chatResponse.data.items);
+
+        const result = chatResponse.data.items.filter(message => {
+            const timestamp = new Date(message.snippet.publishedAt);
+            const now = new Date();
+            const message_age = now - timestamp;
+            // console.log(message_age);
+            if (message_age > YOUTUBE_MAX_MESSAGE_AGE) {
+                return false; //messages that are too old are excluded
+            } else if (!ids_seen.includes(message.id)) {
+                ids_seen.push(message.id);
+                return true; //if it has not been seen, include it
             } else {
-                if (m.emojiText !== undefined) {
-                    message = m.emojiText;
-                }
-                /*
-                {
-                    url: 'https://yt3.ggpht.com/m6yqTzfmHlsoKKEZRSZCkqf6cGSeHtStY4rIeeXLAk4N9GY_yw3dizdZoxTrjLhlY4r_rkz3GA=w24-h24-c-k-nd',
-                    alt: ':yt:',
-                    isCustomEmoji: true,
-                    emojiText: ':yt:'
-                }
-    
-                OR
-    
-                {
-                    url: 'https://www.youtube.com/s/gaming/emoji/0f0cae22/emoji_u1f600.svg',
-                    alt: ':grinning_face:',
-                    isCustomEmoji: false,
-                    emojiText: '😀'
-                }
-                */
+                return false; //otherwise exclude it
+            }
+        })
+            .map(message => ({
+                text: message.snippet.textMessageDetails.messageText,
+                author: message.authorDetails.displayName
+            }));
+
+        result.forEach(async element => {
+            const author = element.author;
+            const message = element.text;
+            console.log(`[youtube] ${author}: ${message}`);
+            if (message !== undefined) {
+                send_chat(channel, author, undefined, message);
+                const fwd_cmds_yt_twitch = await getFwdCmdsYtTwitch(channel);
+                fwd_cmds_yt_twitch.forEach(command => {
+                    if (message.startsWith(command)) {
+                        tmi_client.say(channel, filter.clean(message));
+                    }
+                });
+
+                // tmi_client.say(channel, `[youtube] ${author}: ${message}`);
+                // handleCommand(message);
             }
         });
-
-        console.log(`[youtube] ${author}: ${message}`);
-        if (message !== undefined) {
-            send_chat(channel, author, undefined, message, false);
-            YT_COMMANDS_TO_FWD.forEach(command => {
-                if (message.startsWith(command)) {
-                    tmi_client.say(channel, message);
-                }
-            });
-
-            // tmi_client.say(channel, `[youtube] ${author}: ${message}`);
-            // handleCommand(message);
-        }
-    });
-
-    // err: Error or any
-    yt.on('error', (err) => {
-        console.error('[youtube] chat connection ERROR:', err);
-        tmi_client.say(channel, `youtube chat ERROR: ${err}`);
-    });
-
-    const ok = await yt.start()
-    if (!ok) {
-        console.error('[youtube] falied to connect to chat');
-        tmi_client.say(channel, 'youtube falied to connect to chat');
+        // console.log(result);
+        // return result;
     }
+
+    youtube_chats[youtube_id] = {
+        getter: get_messages,
+        ids_seen: [],
+    };
 }
 
-// async function connect_to_all_youtubes() {
-//     (await getChannels()).forEach(async channel => {
-//         connect_to_youtube(channel);
-//     });
-// }
-
-// (async () => {
-//     connect_to_all_youtubes();
-// })();
-
-
+//every 5 seconds, pull from all youtube chats
+setInterval(() => {
+    Object.keys(youtube_chats).forEach(youtube_id => {
+        const getter = youtube_chats[youtube_id].getter;
+        const ids_seen = youtube_chats[youtube_id].ids_seen;
+        getter(ids_seen);
+    })
+}, 5000);
 
 
 //start the http server
@@ -504,8 +600,5 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 
 
 //TODO allow mods to use the admin page for the streamer
-//TODO fix live chat (right now it only gets top chat)
-//TODO profanity filter?
-//TODO fix chat replay (use code from twitch-nickname-bot)
-//TODO prevent profanity mirror attacks
 //TODO link to source code on the page
+//TODO give the bot "watching without audio/video" badge
