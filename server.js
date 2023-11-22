@@ -436,9 +436,9 @@ const youtube = google.youtube({
     auth: process.env.YOUTUBE_API_KEY,
 });
 
-async function getLiveVideoId(channelId) {
+async function getLiveVideoId(youtube_id) {
     return new Promise(async (resolve, reject) => {
-        const yt = new LiveChat({ channelId: channelId });
+        const yt = new LiveChat({ channelId: youtube_id });
         console.log(yt);
         yt.on('start', (liveId) => {
             console.log('[youtube] chat connection started with liveId:', liveId);
@@ -473,7 +473,7 @@ async function getLiveVideoId(channelId) {
 const youtube_chats = {
     // 'UCmrLaVZneWG3kJyPqp-RFJQ': {
     //     getter: () => some function that fetches chat messages and processes them,
-    //     ids_seen: ['list of ids', 'already seen', 'so skip them if seen again']
+    //     pageToken: 'token stored to keep track of which chat message it left off at'
     // }
 };
 
@@ -529,27 +529,24 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
     const liveChatId = videoResponse.data.items[0].liveStreamingDetails.activeLiveChatId;
     console.log('[youtube] liveChatId:', liveChatId);
 
-    const get_messages = async (ids_seen) => {
+    const get_messages = async (pageToken) => {
         // Get live chat messages
         const chatResponse = await youtube.liveChatMessages.list({
             liveChatId: liveChatId,
-            part: 'snippet, authorDetails'
+            part: 'snippet, authorDetails',
+            pageToken: pageToken
         });
+        console.log(`[youtube] got chat for channel ${youtube_id}, ${chatResponse.data.items.length} items`)
+
         // console.log(chatResponse.data.items);
+        youtube_chats[youtube_id].pageToken = chatResponse.data.nextPageToken;
 
         const result = chatResponse.data.items.filter(message => {
             const timestamp = new Date(message.snippet.publishedAt);
             const now = new Date();
             const message_age = now - timestamp;
             // console.log(message_age);
-            if (message_age > YOUTUBE_MAX_MESSAGE_AGE) {
-                return false; //messages that are too old are excluded
-            } else if (!ids_seen.includes(message.id)) {
-                ids_seen.push(message.id);
-                return true; //if it has not been seen, include it
-            } else {
-                return false; //otherwise exclude it
-            }
+            return message_age <= YOUTUBE_MAX_MESSAGE_AGE; //messages that are too old are excluded
         })
             .map(message => ({
                 text: message.snippet.textMessageDetails.messageText,
@@ -579,7 +576,7 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
 
     youtube_chats[youtube_id] = {
         getter: get_messages,
-        ids_seen: [],
+        pageToken: '',
     };
 }
 
@@ -587,8 +584,8 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
 setInterval(() => {
     Object.keys(youtube_chats).forEach(youtube_id => {
         const getter = youtube_chats[youtube_id].getter;
-        const ids_seen = youtube_chats[youtube_id].ids_seen;
-        getter(ids_seen);
+        const pageToken = youtube_chats[youtube_id].pageToken;
+        getter(pageToken);
     })
 }, 5000);
 
@@ -602,3 +599,8 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO allow mods to use the admin page for the streamer
 //TODO link to source code on the page
 //TODO give the bot "watching without audio/video" badge
+//TODO autoscroll when chat history loads
+//TODO merge in the nickname bot
+//TODO twitch global emotes
+//TODO twitch BTTV, FFZ, 7TV emotes
+//TODO youtube emotes
