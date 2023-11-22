@@ -149,6 +149,12 @@
                 compute_color(text) {
                     return this.colorHash.hex(text + "....");
                 },
+                scroll_chat() {
+                    const messages = document.querySelector('#messages');
+                    this.$nextTick(() => {
+                        messages.scrollTo(0, messages.scrollHeight);
+                    });
+                },
                 socket_connect() {
                     console.log('socket connected');
                     this.socket.emit('init', { 'channel': this.channel });
@@ -158,11 +164,13 @@
                 },
                 socket_chat(msg) {
                     console.log('chat: ', msg);
-                    this.chat.push(msg);
-                    const messages = document.querySelector('#messages');
-                    this.$nextTick(() => {
-                        messages.scrollTo(0, messages.scrollHeight);
-                    });
+                    if (msg.clear_chat) {
+                        console.log('clear_chat', msg.clear_chat);
+                        this.chat = [];
+                    } else {
+                        this.chat.push(msg);
+                        this.scroll_chat();
+                    }
                 },
                 socket_event(msg) {
                     console.log('event: ', msg);
@@ -274,7 +282,10 @@
 
                         fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
-                            .then(json => this.chat = json);
+                            .then(json => {
+                                this.chat = json;
+                                this.scroll_chat();
+                            });
                         fetch('/fwd_cmds_yt_twitch?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
                             .then(json => this.fwd_cmds_yt_twitch = json);

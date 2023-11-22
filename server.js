@@ -421,6 +421,10 @@ async function handleCommand(target, context, msg, username) {
         if (has_permission(context)) {
             disconnect_from_youtube(channel);
         }
+    } else if (commandName === '!clear') {
+        if (has_permission(context)) {
+            clear_chat(channel);
+        }
     } else {
         valid = false;
         console.log(`[bot] Unknown command: ${commandName}`);
@@ -430,6 +434,12 @@ async function handleCommand(target, context, msg, username) {
         console.log(`[bot] Executed command: ${commandName}`);
     }
     return valid;
+}
+
+async function clear_chat(channel) {
+    chat_history[channel] = [];
+    console.log(`[socket.io] CLEAR CHAT ${channel}`);
+    io.emit(channel + '/chat', { clear_chat: true });
 }
 
 
@@ -583,3 +593,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO twitch global emotes
 //TODO twitch BTTV, FFZ, 7TV emotes
 //TODO youtube emotes
+//TODO clear chat automatically?
+//TODO remove deleted messages (timeouts, bans, individually deleted messages)
+//TODO check all "replace" and see if it should be "replaceAll"
