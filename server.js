@@ -2,7 +2,7 @@ const http = require('http');
 const https = require('https');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
-const { LiveChat } = require("youtube-chat"); //youtube chat https://github.com/LinaTsukusu/youtube-chat#readme
+const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests") //youtube chat https://github.com/LinaTsukusu/youtube-chat
 const { Masterchat, stringify } = require("masterchat");
 const fs = require('fs');
 const express = require('express');
@@ -28,6 +28,7 @@ const chat_history = {};
 const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
 const DEFAULT_FWD_CMDS_YT_TWITCH = ['!sr', '!test'];
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
+const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 // Initialize Express and middlewares
@@ -291,12 +292,8 @@ async function getYoutubeId(channel) {
 async function setYoutubeId(channel, youtube_id) {
     const old_youtube_id = await getYoutubeId(channel);
     if (old_youtube_id !== youtube_id) {
-        if (youtube_chats[youtube_id]) {
-            youtube_chats[youtube_id].stop();
-            delete youtube_chats[youtube_id];
-        }
         await db.push('/channels/' + channel + '/youtube_id/', youtube_id);
-        // connect_to_youtube(channel);
+        connect_to_youtube(channel);
     }
 }
 
@@ -410,16 +407,15 @@ async function handleCommand(target, context, msg, username) {
     var valid = true;
     // If the command is known, let's execute it
     if (commandName === '!help') {
-        tmi_client.say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !ytconnect - connect to the youtube chat once you have started stream; !ytdisconnect - disconnect from the youtube chat`);
+        tmi_client.say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically)`);
     } else if (commandName === '!multichat') {
         tmi_client.say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
     } else if (commandName === '!ytconnect') {
         if (has_permission(context)) {
-            connect_to_youtube(channel);
-        }
-    } else if (commandName === '!ytdisconnect') {
-        if (has_permission(context)) {
-            disconnect_from_youtube(channel);
+            const result = await connect_to_youtube(channel);
+            console.log('[youtube] ytconnect result:', result);
+            if (result === 'no id') tmi_client.say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
+            if (result === 'no live') tmi_client.say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getYoutubeId(channel) + '/live');
         }
     } else if (commandName === '!clear') {
         if (has_permission(context)) {
@@ -445,71 +441,41 @@ async function clear_chat(channel) {
 
 //youtube chat stuff
 async function getLiveVideoId(youtube_id) {
-    return new Promise(async (resolve, reject) => {
-        const yt = new LiveChat({ channelId: youtube_id });
-        console.log(yt);
-        yt.on('start', (liveId) => {
-            console.log('[youtube] chat connection started with liveId:', liveId);
-            // tmi_client.say(channel, `connected to youtube chat: youtu.be/${liveId}`);
-            yt.stop();
-            resolve(liveId);
-        });
-        yt.on('end', (reason) => {
-            console.log('[youtube] chat connection ended with reason:', reason);
-            // tmi_client.say(channel, `disconnected from youtube chat`);
-        });
-        yt.on('chat', (chatItem) => {
-            console.log('[youtube] (temporary connection got a chat message) chatItem', chatItem);
-        });
-        yt.on('error', (err) => {
-            console.error('[youtube] chat connection ERROR:', err);
-            // tmi_client.say(channel, `youtube chat ERROR: ${err}`);
-        });
-        const ok = await yt.start()
-        if (!ok) {
-            console.error('[youtube] falied to connect to chat');
-            // tmi_client.say(channel, 'youtube falied to connect to chat');
-            resolve('');
-        }
-        setTimeout(() => {
-            yt.stop();
-            resolve('');
-        }, 10000); //stop after 10s if nothing happened
-    });
+    try {
+        return (await fetchLivePage({ channelId: youtube_id })).liveId;
+    } catch (error) {
+        // console.log(error);
+        return '';
+    }
 }
 
 const youtube_chats = {
-    // 'UCmrLaVZneWG3kJyPqp-RFJQ': await Masterchat.init("IKRQQAMYnrM")
+    // 'jjvantheman': { 
+    //     youtube_id: 'UCmrLaVZneWG3kJyPqp-RFJQ',
+    //     listener: await Masterchat.init("IKRQQAMYnrM"),
+    // }
 };
 
-async function disconnect_from_youtube(channel) {
-    tmi_client.say(channel, `disconnecting from youtube chat`);
-    const youtube_id = await getYoutubeId(channel);
-    if (!youtube_id) {
-        return;
-    }
-    if (youtube_chats[youtube_id]) {
-        youtube_chats[youtube_id].stop();
-        delete youtube_chats[youtube_id];
+async function disconnect_from_youtube(channel) { //channel is a twitch channel
+    if (youtube_chats[channel]) {
+        youtube_chats[channel].listener.stop();
+        delete youtube_chats[channel];
     }
 }
 
-async function connect_to_youtube(channel) { //TODO this is twitch channel, either refactor or rename var
+async function connect_to_youtube(channel) { //channel is a twitch channel
     const youtube_id = await getYoutubeId(channel);
     if (!youtube_id) {
-        return;
+        console.log('[youtube] no channel id associated with twitch channel ' + channel);
+        return 'no id';
     }
-    if (youtube_chats[youtube_id]) {
-        youtube_chats[youtube_id].stop();
-        delete youtube_chats[youtube_id];
-    }
+    disconnect_from_youtube(channel);
 
     const liveVideoId = await getLiveVideoId(youtube_id);
-    console.log('[youtube] liveVideoId:', liveVideoId);
+    console.log(`[youtube] channel: ${channel} youtube_id: ${youtube_id} liveVideoId: ${liveVideoId}`);
     if (liveVideoId === '') {
         console.error('[youtube] falied to find livestream');
-        tmi_client.say(channel, 'youtube falied to find livestream');
-        return;
+        return 'no live';
     }
     console.log(`[youtube] connected to youtube chat: youtu.be/${liveVideoId}`);
     tmi_client.say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`);
@@ -524,7 +490,7 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
         if (message_age <= YOUTUBE_MAX_MESSAGE_AGE) {
             const author = chat.authorName;
             const message = stringify(chat.message);
-            console.log(`[youtube] ${author}: ${message}`);
+            console.log(`[youtube] [for twitch.tv/${channel}] ${author}: ${message}`);
             if (message !== undefined) {
                 send_chat(channel, author, undefined, message);
                 const fwd_cmds_yt_twitch = await getFwdCmdsYtTwitch(channel);
@@ -557,7 +523,7 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
 
     // Handle errors
     mc.on("error", (err) => {
-        console.log('[youtube]', err.code);
+        console.log(`[youtube] [for twitch.tv/${channel}] ${err.code}`);
         // "disabled" => Live chat is disabled
         // "membersOnly" => No permission (members-only)
         // "private" => No permission (private video)
@@ -569,14 +535,34 @@ async function connect_to_youtube(channel) { //TODO this is twitch channel, eith
 
     // Handle end event
     mc.on("end", () => {
-        console.log("[youtube] live stream has ended");
+        console.log(`[youtube] [for twitch.tv/${channel}] live stream has ended or chat was disconnected`);
     });
 
     // Start polling live chat API
     mc.listen();
 
-    youtube_chats[youtube_id] = mc;
+    youtube_chats[channel] = {
+        youtube_id: youtube_id,
+        listener: mc,
+    }
+
+    return '';
 }
+
+
+async function connect_to_all_youtubes() {
+    console.log('[youtube] attempting to connect to all youtube chats');
+    (await getEnabledChannels()).forEach(async channel => {
+        if (youtube_chats[channel]) {
+            console.log('[youtube] already connected to youtube livestream for twitch channel ' + channel);
+        } else {
+            connect_to_youtube(channel);
+        }
+    });
+}
+
+//periodically attempt to connect to youtube chats
+setInterval(connect_to_all_youtubes, YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL);
 
 
 //start the http server
@@ -588,7 +574,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO allow mods to use the admin page for the streamer
 //TODO link to source code on the page
 //TODO give the bot "watching without audio/video" badge
-//TODO autoscroll when chat history loads
 //TODO merge in the nickname bot
 //TODO twitch global emotes
 //TODO twitch BTTV, FFZ, 7TV emotes
@@ -596,3 +581,4 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
 //TODO check all "replace" and see if it should be "replaceAll"
+//TODO replace some console.log with console.error
