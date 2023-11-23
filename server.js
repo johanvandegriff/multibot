@@ -126,10 +126,10 @@ app.get('/logout', function (req, res, next) {
     });
 });
 
-
 //expose js libraries to client so they can run in the browser
 app.get('/vue.js', (req, res) => { res.sendFile(__dirname + '/node_modules/vue/dist/vue.global.prod.js') });
 app.get('/color-hash.js', (req, res) => { res.sendFile(__dirname + '/node_modules/color-hash/dist/color-hash.js') });
+app.use('/tmi-utils', express.static(__dirname + '/node_modules/tmi-utils/dist/esm', { 'extensions': ['js'] })); //add .js if not specified
 app.get('/favicon.ico', (req, res) => { res.sendFile(__dirname + '/favicon.ico') });
 app.get('/favicon.png', (req, res) => { res.sendFile(__dirname + '/favicon.png') });
 
@@ -324,8 +324,8 @@ io.on('connection', (socket) => {
     });
 });
 
-function send_chat(channel, username, color, text) {
-    const iomsg = { username: username, color: color, text: text };
+function send_chat(channel, username, color, text, emotes) {
+    const iomsg = { username: username, color: color, emotes: emotes, text: text };
     if (!chat_history[channel]) {
         chat_history[channel] = [];
     }
@@ -333,7 +333,7 @@ function send_chat(channel, username, color, text) {
     if (chat_history[channel].length > CHAT_HISTORY_LENGTH) {
         chat_history[channel].shift();
     }
-    console.log(`[socket.io] SEND CHAT ${username} (${color}): ${text}`);
+    console.log(`[socket.io] SEND CHAT ${username} (color: ${color} emotes: ${JSON.stringify(emotes)}): ${text}`);
     io.emit(channel + '/chat', iomsg);
 }
 
@@ -389,7 +389,7 @@ async function onMessageHandler(target, context, msg, self) {
     if (context["message-type"] === "whisper") { return; }
 
     //forward message to socket chat
-    send_chat(channel, username, context.color, msg);
+    send_chat(channel, username, context.color, msg, context.emotes);
 
     if (self) { return; } // Ignore messages from the bot
     await handleCommand(target, context, msg, username);
@@ -401,13 +401,13 @@ function has_permission(context) {
 
 async function handleCommand(target, context, msg, username) {
     // Remove whitespace and 7TV bypass from chat message
-    const commandName = msg.replace(' 󠀀', '').trim();
+    const commandName = msg.replaceAll(' 󠀀', '').trim();
     const channel = target.replace('#', '');
 
     var valid = true;
     // If the command is known, let's execute it
     if (commandName === '!help') {
-        tmi_client.say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically)`);
+        tmi_client.say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically); !ytdisconnect - disconnect from the youtube chat`);
     } else if (commandName === '!multichat') {
         tmi_client.say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
     } else if (commandName === '!ytconnect') {
@@ -416,6 +416,10 @@ async function handleCommand(target, context, msg, username) {
             console.log('[youtube] ytconnect result:', result);
             if (result === 'no id') tmi_client.say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
             if (result === 'no live') tmi_client.say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getYoutubeId(channel) + '/live');
+        }
+    } else if (commandName === '!ytdisconnect') {
+        if (has_permission(context)) {
+            disconnect_from_youtube(channel);
         }
     } else if (commandName === '!clear') {
         if (has_permission(context)) {
@@ -580,4 +584,8 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO youtube emotes
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
-//TODO check all "replace" and see if it should be "replaceAll"
+//TODO abstract out the sharing of state thru sockets
+//TODO disabling a channel should disconnect youtube chat
+//TODO removing the channel id should disconnect youtube chat
+//TODO failed to get chat messages after saying it was connected on the 1min timer
+

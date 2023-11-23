@@ -1,11 +1,11 @@
 {
-    "name": "twitch-nickname-bot",
+    "name": "multistream-bot",
     "version": "0.0.1",
-    "description": "In twitch chat, set a nickname with !setnickname, then view a nickname with !nickname username. https://nicknames.johanv.net",
+    "description": "aggregate live chat from twitch, youtube, etc. and forward commands between as needed. https://coolbot.jjv.sh",
     "license": "AGPL-3.0-or-later",
     "repository": {
         "type": "git",
-        "url": "git://codeberg.org/johanvandegriff/twitch-nickname-bot.git"
+        "url": "git://codeberg.org/johanvandegriff/multistream-bot.git"
     },
     "dependencies": {
         "@types/node": "^14.11.8",
@@ -22,6 +22,7 @@
         "profanity-filter": "^0.2.1",
         "request": "^2.88.2",
         "socket.io": "^4.5.2",
+        "tmi-utils": "^1.0.1",
         "tmi.js": "^1.8.5",
         "vue": "^3.3.7",
         "youtube-chat": "^2.2.0"

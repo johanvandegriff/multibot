@@ -17,7 +17,15 @@
                         msg.username
                         ]]</span>
                     <span>: </span>
-                    <span>[[ msg.text ]]</span>
+                    <span v-if="msg.emotes">
+                        <span v-for="{ type, value, raw } in this.parseEmotesInMessage(msg.emotes, msg.text)">
+                            <span v-if="type === 'emote'">
+                                <img style="margin: -.25rem 0; height: 1.2rem;" :src="getEmoteAsUrl(value)" :alt="raw" :title="raw" />
+                            </span>
+                            <span v-else>[[ value ]]</span>
+                        </span>
+                    </span>
+                    <span v-else>[[ msg.text ]]</span>
                 </li>
             </ul>
         </div>
@@ -28,7 +36,9 @@
     <script src="/color-hash.js"></script>
 
 
-    <script>
+    <script type="module">
+        import { getEmoteAsUrl, parseEmotesInMessage } from '/tmi-utils/index.js';
+
         const { createApp, ref } = Vue
 
         createApp({
@@ -40,6 +50,8 @@
                     channel: '{{ channel }}',
                     bgcolor: '{{ bgcolor }}',
                     chat: [],
+                    parseEmotesInMessage: parseEmotesInMessage,
+                    getEmoteAsUrl: getEmoteAsUrl,
                 }
             },
             methods: {
@@ -57,7 +69,7 @@
                     this.socket.emit('init', { 'channel': this.channel });
                 },
                 socket_error() {
-                    console.log('socket error');
+                    console.error('socket error');
                 },
                 socket_chat(msg) {
                     console.log('chat: ', msg);

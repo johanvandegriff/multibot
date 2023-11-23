@@ -99,7 +99,15 @@
                     <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[
                         msg.username ]]</span>
                     <span>: </span>
-                    <span>[[ msg.text ]]</span>
+                    <span v-if="msg.emotes">
+                        <span v-for="{ type, value, raw } in this.parseEmotesInMessage(msg.emotes, msg.text)">
+                            <span v-if="type === 'emote'">
+                                <img style="margin: -.25rem 0; height: 1.2rem;" :src="getEmoteAsUrl(value)" :alt="raw" :title="raw" />
+                            </span>
+                            <span v-else>[[ value ]]</span>
+                        </span>
+                    </span>
+                    <span v-else>[[ msg.text ]]</span>
                 </li>
             </ul>
         </div>
@@ -109,7 +117,8 @@
     <script src="/vue.js"></script>
     <script src="/color-hash.js"></script>
 
-    <script>
+    <script type="module">
+        import { getEmoteAsUrl, parseEmotesInMessage } from '/tmi-utils/index.js';
         async function fetch_post(url, data) {
             return fetch(url, {
                 method: 'POST',
@@ -143,6 +152,8 @@
                     youtube_id: '',
                     fwd_cmds_yt_twitch: [],
                     new_cmd: '',
+                    parseEmotesInMessage: parseEmotesInMessage,
+                    getEmoteAsUrl: getEmoteAsUrl,
                 }
             },
             methods: {
@@ -160,7 +171,7 @@
                     this.socket.emit('init', { 'channel': this.channel });
                 },
                 socket_error() {
-                    console.log('socket error');
+                    console.error('socket error');
                 },
                 socket_chat(msg) {
                     console.log('chat: ', msg);
@@ -290,6 +301,8 @@
                             .then(res => res.json())
                             .then(json => this.fwd_cmds_yt_twitch = json);
                     }
+                    //                     [twitch] TARGET: #jjvantheman SELF: false CONTEXT: {"badge-info":null,"badges":{"broadcaster":"1"},"client-nonce":"82b22f9838ae3498d61a564a115b8266","color":"#8A2BE2","display-name":"JJvanTheMan","emotes":{"123171":["47-58"],"555555584":["39-40"],"emotesv2_13b6dd7f3a3146ef8dc10f66d8b42a96":["5-17"],"emotesv2_f045d9aa07d54961ab2ba77174305278":["24-32"]},"first-msg":false,"flags":null,"id":"351c8cc5-76ff-40e2-87f7-7e02209a88d9","mod":false,"returning-chatter":false,"room-id":"501240813","subscriber":false,"tmi-sent-ts":"1700706559750","turbo":false,"user-id":"501240813","user-type":null,"emotes-raw":"emotesv2_13b6dd7f3a3146ef8dc10f66d8b42a96:5-17/emotesv2_f045d9aa07d54961ab2ba77174305278:24-32/555555584:39-40/123171:47-58","badge-info-raw":null,"badges-raw":"broadcaster/1","username":"jjvantheman","message-type":"chat"}
+                    // [twitch] JJvanTheMan: test TwitchConHYPE test HypeBeard test <3 test CoolStoryBob test
                 },
             },
             // computed: {
