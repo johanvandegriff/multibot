@@ -164,7 +164,7 @@ app.post('/enabled', jsonParser, async (req, res) => {
             return;
         }
     }
-    console.log('auth error', req.body);
+    console.error('auth error', req.body);
     res.send('auth error');
 });
 
@@ -184,14 +184,14 @@ app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
                 res.send('ok');
                 return;
             } else {
-                console.log('expected array', req.body);
+                console.error('expected array', req.body);
                 res.send('expected array');
                 return
             }
         }
     }
     send_event({ channel: channel, fwd_cmds_yt_twitch: await getFwdCmdsYtTwitch(channel) });
-    console.log('auth error', req.body);
+    console.error('auth error', req.body);
     res.send('auth error');
 });
 
@@ -210,7 +210,7 @@ app.post('/youtube_id', jsonParser, async (req, res) => {
             return;
         }
     }
-    console.log('auth error', req.body);
+    console.error('auth error', req.body);
     res.send('auth error');
 });
 
@@ -242,12 +242,12 @@ app.get('/find_youtube_id', async (req, res) => {
                     console.log('[youtube] found ID:', match[1], 'for channel:', channel);
                     res.send(match[1]);
                 } else {
-                    console.log('[youtube] error finding channel ID for:', channel);
+                    console.error('[youtube] error finding channel ID for:', channel);
                     res.send('error');
                 }
             });
     } else {
-        console.log('[youtube] invalid URL or handle provided:', channel);
+        console.error('[youtube] invalid URL or handle provided:', channel);
         res.send('invalid');
     }
 });
@@ -444,7 +444,7 @@ async function getLiveVideoId(youtube_id) {
     try {
         return (await fetchLivePage({ channelId: youtube_id })).liveId;
     } catch (error) {
-        // console.log(error);
+        // console.error(error);
         return '';
     }
 }
@@ -466,7 +466,7 @@ async function disconnect_from_youtube(channel) { //channel is a twitch channel
 async function connect_to_youtube(channel) { //channel is a twitch channel
     const youtube_id = await getYoutubeId(channel);
     if (!youtube_id) {
-        console.log('[youtube] no channel id associated with twitch channel ' + channel);
+        console.error('[youtube] no channel id associated with twitch channel ' + channel);
         return 'no id';
     }
     disconnect_from_youtube(channel);
@@ -581,4 +581,3 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
 //TODO check all "replace" and see if it should be "replaceAll"
-//TODO replace some console.log with console.error
