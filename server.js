@@ -2,8 +2,8 @@ const http = require('http');
 const https = require('https');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
-const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests") //youtube chat https://github.com/LinaTsukusu/youtube-chat
-const { Masterchat, stringify } = require("masterchat");
+const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests") //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
+const { Masterchat, stringify } = require("masterchat"); //youtube chat https://github.com/sigvt/masterchat
 const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
@@ -169,23 +169,23 @@ app.post('/enabled', jsonParser, async (req, res) => {
 });
 
 app.get('/fwd_cmds_yt_twitch', async (req, res) => { res.send(await getFwdCmdsYtTwitch(req.query.channel)) });
-app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
-    console.log(req.body)
-    const channel = req.body.channel;
-    if (req.session && req.session.passport && req.session.passport.user) {
-        const is_super_admin = req.session.passport.user.is_super_admin;
-        const login = req.session.passport.user.login;
+    app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
+        console.log(req.body)
+        const channel = req.body.channel;
+        if (req.session && req.session.passport && req.session.passport.user) {
+            const is_super_admin = req.session.passport.user.is_super_admin;
+            const login = req.session.passport.user.login;
 
-        if (login === channel || is_super_admin) {
-            console.log('auth success', req.body, login);
-            if (Array.isArray(req.body.fwd_cmds_yt_twitch)) {
+            if (login === channel || is_super_admin) {
+                console.log('auth success', req.body, login);
+                if (Array.isArray(req.body.fwd_cmds_yt_twitch)) {
                 await setFwdCmdsYtTwitch(channel, req.body.fwd_cmds_yt_twitch);
                 send_event({ channel: channel, fwd_cmds_yt_twitch: req.body.fwd_cmds_yt_twitch });
                 res.send('ok');
                 return;
             } else {
-                console.error('expected array', req.body);
-                res.send('expected array');
+        console.error('expected array', req.body);
+        res.send('expected array');
                 return
             }
         }
@@ -287,20 +287,20 @@ async function getYoutubeId(channel) {
     } catch (error) {
         return '';
     }
-}
+    }
 
 async function setYoutubeId(channel, youtube_id) {
     const old_youtube_id = await getYoutubeId(channel);
     if (old_youtube_id !== youtube_id) {
         await db.push('/channels/' + channel + '/youtube_id/', youtube_id);
-        connect_to_youtube(channel);
+connect_to_youtube(channel);
     }
 }
 
 async function getFwdCmdsYtTwitch(channel) {
     try {
         return await db.getData('/channels/' + channel + '/fwd_cmds_yt_twitch');
-    } catch (error) {
+} catch (error) {
         return DEFAULT_FWD_CMDS_YT_TWITCH;
     }
 }
@@ -579,7 +579,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO link to source code on the page
 //TODO give the bot "watching without audio/video" badge
 //TODO merge in the nickname bot
-//TODO twitch global emotes
 //TODO twitch BTTV, FFZ, 7TV emotes
 //TODO youtube emotes
 //TODO clear chat automatically?

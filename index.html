@@ -187,7 +187,7 @@
                     console.log('event: ', msg);
                     if (msg.channel && msg.enabled !== undefined) {
                         console.log(msg.channel, msg.enabled, this.channels);
-                        this.get_channels();
+                        this.get_channels(); //TODO just adjust what changed instead of getting everything
                     }
                     if (msg.channel && msg.fwd_cmds_yt_twitch !== undefined) {
                         console.log(msg.channel, msg.fwd_cmds_yt_twitch);
@@ -208,10 +208,10 @@
                             this.channels = json.channels;
                         });
                 },
-                set_enabled(isEnabled) {
+                set_enabled(enabled) {
                     fetch_post('/enabled', {
                         channel: this.channel,
-                        isEnabled: isEnabled,
+                        enabled: enabled,
                     });
                     // .then(this.get_channels());
                 },
@@ -236,8 +236,10 @@
                             .then(res => res.text())
                             .then(text => {
                                 if (text === 'invalid') {
+                                    this.get_youtube_id();
                                     alert('Invalid channel handle, URL, or ID');
                                 } else if (text === 'error') {
+                                    this.get_youtube_id();
                                     alert('Error finding channel ID. If this is broken, look online for how to find your channel ID and enter it here directly');
                                 } else {
                                     this.set_youtube_id(text);
@@ -301,8 +303,6 @@
                             .then(res => res.json())
                             .then(json => this.fwd_cmds_yt_twitch = json);
                     }
-                    //                     [twitch] TARGET: #jjvantheman SELF: false CONTEXT: {"badge-info":null,"badges":{"broadcaster":"1"},"client-nonce":"82b22f9838ae3498d61a564a115b8266","color":"#8A2BE2","display-name":"JJvanTheMan","emotes":{"123171":["47-58"],"555555584":["39-40"],"emotesv2_13b6dd7f3a3146ef8dc10f66d8b42a96":["5-17"],"emotesv2_f045d9aa07d54961ab2ba77174305278":["24-32"]},"first-msg":false,"flags":null,"id":"351c8cc5-76ff-40e2-87f7-7e02209a88d9","mod":false,"returning-chatter":false,"room-id":"501240813","subscriber":false,"tmi-sent-ts":"1700706559750","turbo":false,"user-id":"501240813","user-type":null,"emotes-raw":"emotesv2_13b6dd7f3a3146ef8dc10f66d8b42a96:5-17/emotesv2_f045d9aa07d54961ab2ba77174305278:24-32/555555584:39-40/123171:47-58","badge-info-raw":null,"badges-raw":"broadcaster/1","username":"jjvantheman","message-type":"chat"}
-                    // [twitch] JJvanTheMan: test TwitchConHYPE test HypeBeard test <3 test CoolStoryBob test
                 },
             },
             // computed: {
