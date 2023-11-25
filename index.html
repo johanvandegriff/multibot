@@ -9,7 +9,7 @@
 
 <body>
     <div id="app">
-        <div id="login">
+        <div id="login" v-if="!is_chat_fullscreen">
             <span v-if="loggedIn">
                 <img :src="profile_image_url" />
                 <div style="float: right">
@@ -26,7 +26,7 @@
                 &nbsp;
             </span>
         </div>
-        <div id="left_container">
+        <div id="left_container" v-if="!is_chat_fullscreen">
             <h1>JJ's Cool Bot</h1>
             <p v-if="channels">
                 Channel:
@@ -87,14 +87,15 @@
             </span>
         </div>
 
-        <div id="chat">
-            <div id="chat-header">
+        <div :id="is_chat_fullscreen ? 'chat_fullscreen' : 'chat'">
+            <div id="chat-header" v-if="!is_chat_fullscreen">
                 <h2>Chat</h2>
                 <a style="top: 0; position: absolute; left: 100px" target="_blank"
                     :href="'/chat?channel=' + channel">pop-out<img style="width:20px"
                         src="/static/external-link-ltr-icon.svg" alt="popout chat" /></a>
             </div>
-            <ul id="messages">
+            <ul id="messages"
+                :style="is_chat_fullscreen ? { 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' } : {}">
                 <li v-for="msg in chat">
                     <!-- TODO: get the correct username color from youtube -->
                     <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[
@@ -146,22 +147,24 @@
                 return {
                     colorHash: new ColorHash({ lightness: [0.5, 0.6, 0.7, 0.8], saturation: [0.6, 0.7, 0.8, 0.9, 1] }),
                     socket: undefined,
-                    channel: undefined,
+                    channel: '{{channel}}',
                     channels: undefined,
                     chat: [],
-                    accessToken: '{{accessToken}}',
-                    refreshToken: '{{refreshToken}}',
-                    display_name: '{{display_name}}',
-                    login: '{{login}}',
-                    loggedIn: '{{login}}' !== '',
-                    profile_image_url: '{{profile_image_url}}',
-                    is_super_admin: '{{is_super_admin}}' === 'true',
+                    accessToken: '{{user.accessToken}}',
+                    refreshToken: '{{user.refreshToken}}',
+                    display_name: '{{user.display_name}}',
+                    login: '{{user.login}}',
+                    loggedIn: '{{user.login}}' !== '',
+                    profile_image_url: '{{user.profile_image_url}}',
+                    is_super_admin: '{{user.is_super_admin}}' === 'true',
                     youtube_input: '',
                     youtube_id: '',
                     fwd_cmds_yt_twitch: [],
                     new_cmd: '',
                     parseEmotesInMessage: parseEmotesInMessage,
                     getEmoteAsUrl: getEmoteAsUrl,
+                    is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
+                    bgcolor: '{{bgcolor}}',
                 }
             },
             methods: {
@@ -203,8 +206,9 @@
                     }
                 },
                 load_from_local_url() {
-                    this.channel = window.location.href.split('#')[1]?.toLowerCase();
-                    if (this.channel) {
+                    const new_channel = window.location.href.split('#')[1]?.toLowerCase();
+                    if (new_channel) {
+                        this.channel = new_channel;
                         window.location = '#' + this.channel;
                     }
                 },
@@ -277,8 +281,29 @@ title: ${json.listener?.title}
 isLive: ${json.listener?.isLive}`);
                         });
                 },
+                connect_to_socket_chat() {
+                    this.socket = io();
+
+                    this.socket.on('connect', this.socket_connect);
+                    this.socket.on('connect_failed', this.socket_error);
+                    this.socket.on('disconnect', this.socket_error);
+
+                    console.log('LISTENING ON:', this.channel + '/chat', 'events');
+                    this.socket.on(this.channel + '/chat', this.socket_chat);
+                    this.socket.on('events', this.socket_event);
+
+                    fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
+                        .then(res => res.json())
+                        .then(json => {
+                            this.chat = json;
+                            this.scroll_chat();
+                        });
+                },
             },
             mounted() {
+                if (this.channel) {
+                    this.connect_to_socket_chat();
+                }
                 this.get_channels();
                 this.load_from_local_url();
                 //whenever the user goes forward/back in history, re-read from the local url
@@ -299,22 +324,7 @@ isLive: ${json.listener?.isLive}`);
 
                     if (this.channel) {
                         this.get_youtube_id();
-                        this.socket = io();
-
-                        this.socket.on('connect', this.socket_connect);
-                        this.socket.on('connect_failed', this.socket_error);
-                        this.socket.on('disconnect', this.socket_error);
-
-                        console.log('LISTENING ON:', new_channel + '/chat', 'events');
-                        this.socket.on(new_channel + '/chat', this.socket_chat);
-                        this.socket.on('events', this.socket_event);
-
-                        fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
-                            .then(res => res.json())
-                            .then(json => {
-                                this.chat = json;
-                                this.scroll_chat();
-                            });
+                        this.connect_to_socket_chat();
                         fetch('/fwd_cmds_yt_twitch?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
                             .then(json => this.fwd_cmds_yt_twitch = json);

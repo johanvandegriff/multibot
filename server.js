@@ -111,22 +111,13 @@ app.get('/auth/twitch/callback', passport.authenticate('twitch', { successRedire
 const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
-app.get('/', function (req, res) {
-    if (req.session && req.session.passport && req.session.passport.user) {
-        res.send(template(req.session.passport.user));
-    } else {
-        res.send(template({})); //render the template with no user data
-    }
-});
+app.get('/', function (req, res) { res.send(template({ channel: '', user: req.session?.passport?.user })); });
+app.get('/chat', (req, res) => { res.send(template({ is_chat_fullscreen: true, channel: req.query.channel, bgcolor: req.query.bgcolor || 'transparent' })) });
 
 app.get('/logout', function (req, res, next) {
     req.logout(function (err) {
         if (err) { return next(err); }
-        if (req.query.returnTo) {
-            res.redirect('/' + req.query.returnTo);
-        } else {
-            res.redirect('/');
-        }
+        res.redirect('/' + (req.query.returnTo || ''));
     });
 });
 
@@ -139,9 +130,6 @@ app.get('/favicon.png', (req, res) => { res.sendFile(__dirname + '/favicon.png')
 
 //expose the static dir
 app.use('/static', express.static('static'));
-
-const chat_template = handlebars.compile(fs.readFileSync('chat.html', 'utf8'));
-app.get('/chat', (req, res) => { res.send(chat_template({ channel: req.query.channel, bgcolor: req.query.bgcolor || 'transparent' })) });
 
 //expose the list of channels
 app.get('/channels', async (req, res) => { res.send(JSON.stringify({ channels: await getEnabledChannels(), all_channels: await getChannels() })) });
