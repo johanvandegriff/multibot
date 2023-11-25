@@ -63,6 +63,7 @@
                         <button @click="set_youtube_id('')">disconnect</button>
                     </span>
                     <span v-else>(no youtube channel connected)</span>
+                    <button @click="check_youtube_status">check youtube chat status</button>
 
                     <p>
                     <h2>Forward Commands from Youtube to Twitch</h2>
@@ -102,7 +103,8 @@
                     <span v-if="msg.emotes">
                         <span v-for="{ type, value, raw } in this.parseEmotesInMessage(msg.emotes, msg.text)">
                             <span v-if="type === 'emote'">
-                                <img style="margin: -.25rem 0; height: 1.2rem;" :src="getEmoteAsUrl(value)" :alt="raw" :title="raw" />
+                                <img style="margin: -.25rem 0; height: 1.2rem;" :src="getEmoteAsUrl(value)" :alt="raw"
+                                    :title="raw" />
                             </span>
                             <span v-else>[[ value ]]</span>
                         </span>
@@ -212,8 +214,13 @@
                     fetch_post('/enabled', {
                         channel: this.channel,
                         enabled: enabled,
+                    })
+                    .then(res => res.text())
+                    .then(text => {
+                        if (text === 'wait') {
+                            alert('please wait 5 seconds and try again');
+                        }
                     });
-                    // .then(this.get_channels());
                 },
                 custom_channel() {
                     this.channel = prompt('enter channel name').toLowerCase();
@@ -260,6 +267,20 @@
                 },
                 send_cmds() {
                     fetch_post('/fwd_cmds_yt_twitch', { channel: this.channel, fwd_cmds_yt_twitch: this.fwd_cmds_yt_twitch });
+                },
+                check_youtube_status() {
+                    fetch('/youtube_status?channel=' + this.channel)
+                        .then(res => res.json())
+                        .then(json => {
+                            console.log('youtube_status', json);
+                            alert(`YouTube Status:
+youtube_id: ${json.youtube_id}
+channelId: ${json.listener?.channelId}
+channelName: ${json.listener?.channelName}
+videoId: ${json.listener?.videoId}
+title: ${json.listener?.title}
+isLive: ${json.listener?.isLive}`);
+                        });
                 },
             },
             mounted() {

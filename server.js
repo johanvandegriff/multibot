@@ -149,6 +149,9 @@ app.get('/chat_history', async (req, res) => {
     }
 });
 
+const enabled_timeouts = {
+    // 'channel': new Date(),
+};
 app.post('/enabled', jsonParser, async (req, res) => {
     const channel = req.body.channel;
     if (req.session && req.session.passport && req.session.passport.user) {
@@ -156,11 +159,18 @@ app.post('/enabled', jsonParser, async (req, res) => {
         const login = req.session.passport.user.login;
 
         if (login === channel || is_super_admin) {
-            console.log('auth success', req.body, login);
-            await setEnabled(channel, req.body.isEnabled);
-            connectToTwitchChat();
-            send_event({ channel: channel, enabled: req.body.isEnabled });
-            res.send('ok');
+            const now = new Date();
+            //only allow enabling/disabling every 5 seconds
+            if (!enabled_timeouts[channel] || now - enabled_timeouts[channel] > 5000) {
+                enabled_timeouts[channel] = now;
+                console.log('auth success', req.body, login);
+                await setEnabled(channel, req.body.enabled);
+                connectToTwitchChat();
+                send_event({ channel: channel, enabled: req.body.enabled });
+                res.send('ok');
+            } else {
+                res.send('wait');
+            }
             return;
         }
     }
@@ -169,23 +179,23 @@ app.post('/enabled', jsonParser, async (req, res) => {
 });
 
 app.get('/fwd_cmds_yt_twitch', async (req, res) => { res.send(await getFwdCmdsYtTwitch(req.query.channel)) });
-    app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
-        console.log(req.body)
-        const channel = req.body.channel;
-        if (req.session && req.session.passport && req.session.passport.user) {
-            const is_super_admin = req.session.passport.user.is_super_admin;
-            const login = req.session.passport.user.login;
+app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
+    console.log(req.body)
+    const channel = req.body.channel;
+    if (req.session && req.session.passport && req.session.passport.user) {
+        const is_super_admin = req.session.passport.user.is_super_admin;
+        const login = req.session.passport.user.login;
 
-            if (login === channel || is_super_admin) {
-                console.log('auth success', req.body, login);
-                if (Array.isArray(req.body.fwd_cmds_yt_twitch)) {
+        if (login === channel || is_super_admin) {
+            console.log('auth success', req.body, login);
+            if (Array.isArray(req.body.fwd_cmds_yt_twitch)) {
                 await setFwdCmdsYtTwitch(channel, req.body.fwd_cmds_yt_twitch);
                 send_event({ channel: channel, fwd_cmds_yt_twitch: req.body.fwd_cmds_yt_twitch });
                 res.send('ok');
                 return;
             } else {
-        console.error('expected array', req.body);
-        res.send('expected array');
+                console.error('expected array', req.body);
+                res.send('expected array');
                 return
             }
         }
@@ -252,6 +262,12 @@ app.get('/find_youtube_id', async (req, res) => {
     }
 });
 
+function getYoutubeStatus(channel) {
+    return youtube_chats[channel] || {};
+}
+app.get('/youtube_status', async (req, res) => { res.send(getYoutubeStatus(req.query.channel)) });
+
+
 // The first argument is the database filename. If no extension is used, '.json' is assumed and automatically added.
 // The second argument is used to tell the DB to save after each push
 // If you set the second argument to false, you'll have to call the save() method.
@@ -276,8 +292,16 @@ async function getEnabledChannels() {
     }
 }
 
-async function setEnabled(channel, isEnabled) {
-    await db.push('/channels/' + channel + '/enabled/', isEnabled);
+async function setEnabled(channel, enabled) {
+    const old_enabled = await getYoutubeId(channel);
+    if (old_enabled !== enabled) {
+        await db.push('/channels/' + channel + '/enabled/', enabled);
+        if (enabled) {
+            connect_to_youtube(channel);
+        } else {
+            disconnect_from_youtube(channel);
+        }
+    }
 }
 
 
@@ -287,20 +311,20 @@ async function getYoutubeId(channel) {
     } catch (error) {
         return '';
     }
-    }
+}
 
 async function setYoutubeId(channel, youtube_id) {
     const old_youtube_id = await getYoutubeId(channel);
     if (old_youtube_id !== youtube_id) {
         await db.push('/channels/' + channel + '/youtube_id/', youtube_id);
-connect_to_youtube(channel);
+        connect_to_youtube(channel);
     }
 }
 
 async function getFwdCmdsYtTwitch(channel) {
     try {
         return await db.getData('/channels/' + channel + '/fwd_cmds_yt_twitch');
-} catch (error) {
+    } catch (error) {
         return DEFAULT_FWD_CMDS_YT_TWITCH;
     }
 }
@@ -344,6 +368,11 @@ function send_event(msg) {
 
 //twitch chat stuff
 var tmi_client = undefined;
+
+function twitch_try_say(channel, message) {
+    tmi_client.say(channel, message).catch(error => console.error('[twitch] tmi say error:', error));
+}
+
 async function connectToTwitchChat() {
     if (tmi_client) {
         tmi_client.disconnect();
@@ -366,7 +395,7 @@ async function connectToTwitchChat() {
     tmi_client.on('message', onMessageHandler);
     tmi_client.on('connected', onConnectedHandler);
     // Connect to Twitch:
-    tmi_client.connect();
+    tmi_client.connect().catch(error => console.error('[twitch] tmi connect error:', error));
 }
 
 (async () => {
@@ -407,15 +436,15 @@ async function handleCommand(target, context, msg, username) {
     var valid = true;
     // If the command is known, let's execute it
     if (commandName === '!help') {
-        tmi_client.say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically); !ytdisconnect - disconnect from the youtube chat`);
+        twitch_try_say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically); !ytdisconnect - disconnect from the youtube chat`);
     } else if (commandName === '!multichat') {
-        tmi_client.say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
+        twitch_try_say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
     } else if (commandName === '!ytconnect') {
         if (has_permission(context)) {
             const result = await connect_to_youtube(channel);
             console.log('[youtube] ytconnect result:', result);
-            if (result === 'no id') tmi_client.say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
-            if (result === 'no live') tmi_client.say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getYoutubeId(channel) + '/live');
+            if (result === 'no id') twitch_try_say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
+            if (result === 'no live') twitch_try_say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getYoutubeId(channel) + '/live');
         }
     } else if (commandName === '!ytdisconnect') {
         if (has_permission(context)) {
@@ -468,12 +497,12 @@ async function disconnect_from_youtube(channel) { //channel is a twitch channel
 }
 
 async function connect_to_youtube(channel) { //channel is a twitch channel
+    disconnect_from_youtube(channel);
     const youtube_id = await getYoutubeId(channel);
     if (!youtube_id) {
         console.error('[youtube] no channel id associated with twitch channel ' + channel);
         return 'no id';
     }
-    disconnect_from_youtube(channel);
 
     const liveVideoId = await getLiveVideoId(youtube_id);
     console.log(`[youtube] channel: ${channel} youtube_id: ${youtube_id} liveVideoId: ${liveVideoId}`);
@@ -482,7 +511,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
         return 'no live';
     }
     console.log(`[youtube] connected to youtube chat: youtu.be/${liveVideoId}`);
-    tmi_client.say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`);
+    twitch_try_say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`);
 
     const mc = await Masterchat.init(liveVideoId);
     // Listen for live chat
@@ -500,11 +529,11 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
                 const fwd_cmds_yt_twitch = await getFwdCmdsYtTwitch(channel);
                 fwd_cmds_yt_twitch.forEach(command => {
                     if (message.startsWith(command)) {
-                        tmi_client.say(channel, filter.clean(message));
+                        twitch_try_say(channel, filter.clean(message));
                     }
                 });
 
-                // tmi_client.say(channel, `[youtube] ${author}: ${message}`);
+                // twitch_try_say(channel, `[youtube] ${author}: ${message}`);
                 // handleCommand(message);
             }
         }
@@ -584,7 +613,5 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
 //TODO abstract out the sharing of state thru sockets
-//TODO disabling a channel should disconnect youtube chat
-//TODO removing the channel id should disconnect youtube chat
 //TODO failed to get chat messages after saying it was connected on the 1min timer
 
