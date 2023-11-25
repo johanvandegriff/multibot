@@ -94,7 +94,7 @@ passport.use('twitch', new OAuth2Strategy({
         user.display_name = profile.data[0].display_name;
         user.profile_image_url = profile.data[0].profile_image_url;
         user.created_at = profile.data[0].created_at;
-        user.is_super_admin = profile.data[0].login === process.env.TWITCH_SUPER_ADMIN_USERNAME.toLowerCase();
+        user.is_super_admin = is_super_admin(user.login);
         console.log(`[twitch] user "${user.login}" logged in to the web interface with twitch`);
         // console.log(user);
         done(null, user);
@@ -155,8 +155,7 @@ app.get('/chat_history', async (req, res) => {
 
 function channel_auth_middleware(req, res, next) {
     const login = req.session?.passport?.user?.login;
-    const is_super_admin = req.session?.passport?.user?.is_super_admin;
-    if (login === req.body.channel || is_super_admin) {
+    if (login === req.body.channel || is_super_admin(login)) {
         console.log('auth success', req.body, login, is_super_admin);
         next();
     } else {
@@ -396,43 +395,47 @@ async function onMessageHandler(target, context, msg, self) {
     await handleCommand(target, context, msg, username);
 }
 
+function is_super_admin(username) {
+    return username?.toLowerCase() === process.env.TWITCH_SUPER_ADMIN_USERNAME.toLowerCase();
+}
+
 function has_permission(context) {
-    return context.username === process.env.TWITCH_SUPER_ADMIN_USERNAME.toLowerCase() || context && context.badges && (context.badges.broadcaster === '1' || context.badges.moderator === '1');
+    return is_super_admin(context?.username) || context?.badges?.broadcaster === '1' || context?.badges?.moderator === '1';
 }
 
 async function handleCommand(target, context, msg, username) {
     // Remove whitespace and 7TV bypass from chat message
-    const commandName = msg.replaceAll(' 󠀀', '').trim();
+    const command = msg.replaceAll(' 󠀀', '').trim();
     const channel = target.replace('#', '');
 
     var valid = true;
     // If the command is known, let's execute it
-    if (commandName === '!help') {
-        twitch_try_say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically); !ytdisconnect - disconnect from the youtube chat`);
-    } else if (commandName === '!multichat') {
+    if (command === '!help' || command === '!commands') {
+        twitch_try_say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically); !ytdisconnect - disconnect from the youtube chat (broken - might not stay disconnected)`);
+    } else if (command === '!multichat') {
         twitch_try_say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
-    } else if (commandName === '!ytconnect') {
+    } else if (command === '!ytconnect') {
         if (has_permission(context)) {
             const result = await connect_to_youtube(channel);
             console.log('[youtube] ytconnect result:', result);
             if (result === 'no id') twitch_try_say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
             if (result === 'no live') twitch_try_say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getChannelProperty(channel, 'youtube_id') + '/live');
         }
-    } else if (commandName === '!ytdisconnect') {
+    } else if (command === '!ytdisconnect') {
         if (has_permission(context)) {
             disconnect_from_youtube(channel);
         }
-    } else if (commandName === '!clear') {
+    } else if (command === '!clear') {
         if (has_permission(context)) {
             clear_chat(channel);
         }
     } else {
         valid = false;
-        console.log(`[bot] Unknown command: ${commandName}`);
+        console.log(`[bot] Unknown command: ${command}`);
     }
 
     if (valid) {
-        console.log(`[bot] Executed command: ${commandName}`);
+        console.log(`[bot] Executed command: ${command}`);
     }
     return valid;
 }
@@ -483,7 +486,8 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
         return 'no live';
     }
     console.log(`[youtube] connected to youtube chat: youtu.be/${liveVideoId}`);
-    twitch_try_say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`);
+    //delay the message a bit to allow the disconnect message to come thru first
+    setTimeout(() => twitch_try_say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`), 500);
 
     const mc = await Masterchat.init(liveVideoId);
     // Listen for live chat
@@ -541,6 +545,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
     // Handle end event
     mc.on("end", () => {
         console.log(`[youtube] [for twitch.tv/${channel}] live stream has ended or chat was disconnected`);
+        delete youtube_chats[channel];
         twitch_try_say(channel, `disconnected from youtube chat`);
     });
 
