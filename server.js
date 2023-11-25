@@ -26,7 +26,11 @@ const JSON_DB_FILE = '/srv/channels.json';
 const CHAT_HISTORY_LENGTH = 100;
 const chat_history = {};
 const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
-const DEFAULT_FWD_CMDS_YT_TWITCH = ['!sr', '!test'];
+const DEFAULT_CHANNEL_PROPERTIES = {
+    'enabled': false,
+    'fwd_cmds_yt_twitch': ['!sr', '!test'],
+    'youtube_id': '',
+}
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
 const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 
@@ -149,79 +153,80 @@ app.get('/chat_history', async (req, res) => {
     }
 });
 
+function channel_auth_middleware(req, res, next) {
+    const login = req.session?.passport?.user?.login;
+    const is_super_admin = req.session?.passport?.user?.is_super_admin;
+    if (login === req.body.channel || is_super_admin) {
+        console.log('auth success', req.body, login, is_super_admin);
+        next();
+    } else {
+        console.error('access denied', req.body);
+        res.status(403).end(); //403 Forbidden
+    }
+}
+
+function validate_middleware(param_name, param_type) {
+    return (req, res, next) => {
+        const data = req.body[param_name];
+        if (
+            (param_type === 'Array' && data.constructor === Array) ||
+            (param_type === 'Object' && data.constructor === Object) ||
+            typeof data === param_type //for example, 'string', 'number', 'object' (which matches Array or Object)
+        ) {
+            next();
+        } else {
+            console.error('invalid data, expected ' + type + 'but got:', data);
+            res.status(400).send('invalid data, expected ' + type); //400 Bad Request
+        }
+    }
+}
+
 const enabled_timeouts = {
     // 'channel': new Date(),
 };
-app.post('/enabled', jsonParser, async (req, res) => {
+app.post('/enabled', jsonParser, channel_auth_middleware, validate_middleware('enabled', 'boolean'), async (req, res) => {
     const channel = req.body.channel;
-    if (req.session && req.session.passport && req.session.passport.user) {
-        const is_super_admin = req.session.passport.user.is_super_admin;
-        const login = req.session.passport.user.login;
-
-        if (login === channel || is_super_admin) {
-            const now = new Date();
-            //only allow enabling/disabling every 5 seconds
-            if (!enabled_timeouts[channel] || now - enabled_timeouts[channel] > 5000) {
-                enabled_timeouts[channel] = now;
-                console.log('auth success', req.body, login);
-                await setEnabled(channel, req.body.enabled);
-                connectToTwitchChat();
-                send_event({ channel: channel, enabled: req.body.enabled });
-                res.send('ok');
+    const enabled = req.body.enabled;
+    const now = new Date();
+    //only allow enabling/disabling every 5 seconds
+    if (!enabled_timeouts[channel] || now - enabled_timeouts[channel] > 5000) {
+        enabled_timeouts[channel] = now;
+        const old_enabled = await getChannelProperty(channel, 'enabled');
+        if (old_enabled !== enabled) {
+            await setChannelProperty(channel, 'enabled', enabled);
+            if (enabled) {
+                connect_to_youtube(channel);
             } else {
-                res.send('wait');
+                disconnect_from_youtube(channel);
             }
-            return;
+            connectToTwitchChat();
+            send_event({ channel: channel, enabled: enabled });
         }
+        res.end();
+    } else {
+        res.send('wait');
     }
-    console.error('auth error', req.body);
-    res.send('auth error');
 });
 
-app.get('/fwd_cmds_yt_twitch', async (req, res) => { res.send(await getFwdCmdsYtTwitch(req.query.channel)) });
-app.post('/fwd_cmds_yt_twitch', jsonParser, async (req, res) => {
-    console.log(req.body)
+app.get('/fwd_cmds_yt_twitch', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'fwd_cmds_yt_twitch')) });
+app.post('/fwd_cmds_yt_twitch', jsonParser, channel_auth_middleware, validate_middleware('fwd_cmds_yt_twitch', 'Array'), async (req, res) => {
     const channel = req.body.channel;
-    if (req.session && req.session.passport && req.session.passport.user) {
-        const is_super_admin = req.session.passport.user.is_super_admin;
-        const login = req.session.passport.user.login;
-
-        if (login === channel || is_super_admin) {
-            console.log('auth success', req.body, login);
-            if (Array.isArray(req.body.fwd_cmds_yt_twitch)) {
-                await setFwdCmdsYtTwitch(channel, req.body.fwd_cmds_yt_twitch);
-                send_event({ channel: channel, fwd_cmds_yt_twitch: req.body.fwd_cmds_yt_twitch });
-                res.send('ok');
-                return;
-            } else {
-                console.error('expected array', req.body);
-                res.send('expected array');
-                return
-            }
-        }
-    }
-    send_event({ channel: channel, fwd_cmds_yt_twitch: await getFwdCmdsYtTwitch(channel) });
-    console.error('auth error', req.body);
-    res.send('auth error');
+    const fwd_cmds_yt_twitch = req.body.fwd_cmds_yt_twitch;
+    await setChannelProperty(channel, 'fwd_cmds_yt_twitch', fwd_cmds_yt_twitch);
+    send_event({ channel: channel, fwd_cmds_yt_twitch: fwd_cmds_yt_twitch });
+    res.end();
 });
 
-app.get('/youtube_id', async (req, res) => { res.send(await getYoutubeId(req.query.channel)) });
-app.post('/youtube_id', jsonParser, async (req, res) => {
-    console.log(req.body)
+app.get('/youtube_id', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'youtube_id')) });
+app.post('/youtube_id', jsonParser, channel_auth_middleware, validate_middleware('youtube_id', 'string'), async (req, res) => {
     const channel = req.body.channel;
-    if (req.session && req.session.passport && req.session.passport.user) {
-        const is_super_admin = req.session.passport.user.is_super_admin;
-        const login = req.session.passport.user.login;
-
-        if (login === channel || is_super_admin) {
-            console.log('auth success', req.body, login);
-            await setYoutubeId(channel, req.body.youtube_id);
-            res.send('ok');
-            return;
-        }
+    const youtube_id = req.body.youtube_id;
+    const old_youtube_id = await getChannelProperty(channel, 'youtube_id');
+    if (old_youtube_id !== youtube_id) {
+        await setChannelProperty(channel, 'youtube_id', youtube_id);
+        connect_to_youtube(channel);
     }
-    console.error('auth error', req.body);
-    res.send('auth error');
+    res.end();
 });
 
 app.get('/find_youtube_id', async (req, res) => {
@@ -242,23 +247,20 @@ app.get('/find_youtube_id', async (req, res) => {
         channel = 'https://www.youtube.com/@' + channel;
     }
     if (channel.startsWith('https://www.youtube.com/channel/') || channel.startsWith('https://youtube.com/channel/') || channel.startsWith('https://www.youtube.com/@') || channel.startsWith('https://youtube.com/@')) {
-        fetch(channel)
-            .then(res => res.text())
-            .then(text => {
-                // <link rel="canonical" href="https://www.youtube.com/channel/UC3G4BWSWvZZSKAkj-qb7KKQ">
-                const regex = /\<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/([^"]*)"\>/
-                const match = regex.exec(text);
-                if (match) {
-                    console.log('[youtube] found ID:', match[1], 'for channel:', channel);
-                    res.send(match[1]);
-                } else {
-                    console.error('[youtube] error finding channel ID for:', channel);
-                    res.send('error');
-                }
-            });
+        const text = await (await fetch(channel)).text();
+        // <link rel="canonical" href="https://www.youtube.com/channel/UC3G4BWSWvZZSKAkj-qb7KKQ">
+        const regex = /\<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/([^"]*)"\>/
+        const match = regex.exec(text);
+        if (match) {
+            console.log('[youtube] found ID:', match[1], 'for channel:', channel);
+            res.send(match[1]);
+        } else {
+            console.error('[youtube] error finding channel ID for:', channel);
+            res.status(500).send('error'); //500 Internal Server Error
+        }
     } else {
         console.error('[youtube] invalid URL or handle provided:', channel);
-        res.send('invalid');
+        res.status(400).send('invalid');
     }
 });
 
@@ -292,45 +294,15 @@ async function getEnabledChannels() {
     }
 }
 
-async function setEnabled(channel, enabled) {
-    const old_enabled = await getYoutubeId(channel);
-    if (old_enabled !== enabled) {
-        await db.push('/channels/' + channel + '/enabled/', enabled);
-        if (enabled) {
-            connect_to_youtube(channel);
-        } else {
-            disconnect_from_youtube(channel);
-        }
-    }
-}
-
-
-async function getYoutubeId(channel) {
+async function getChannelProperty(channel, property_name) {
     try {
-        return await db.getData('/channels/' + channel + '/youtube_id');
+        return await db.getData('/channels/' + channel + '/' + property_name);
     } catch (error) {
-        return '';
+        return DEFAULT_CHANNEL_PROPERTIES[property_name];
     }
 }
-
-async function setYoutubeId(channel, youtube_id) {
-    const old_youtube_id = await getYoutubeId(channel);
-    if (old_youtube_id !== youtube_id) {
-        await db.push('/channels/' + channel + '/youtube_id/', youtube_id);
-        connect_to_youtube(channel);
-    }
-}
-
-async function getFwdCmdsYtTwitch(channel) {
-    try {
-        return await db.getData('/channels/' + channel + '/fwd_cmds_yt_twitch');
-    } catch (error) {
-        return DEFAULT_FWD_CMDS_YT_TWITCH;
-    }
-}
-
-async function setFwdCmdsYtTwitch(channel, fwd_cmds_yt_twitch) {
-    return await db.push('/channels/' + channel + '/fwd_cmds_yt_twitch', fwd_cmds_yt_twitch);
+async function setChannelProperty(channel, property_name, property_value) {
+    return await db.push('/channels/' + channel + '/' + property_name, property_value);
 }
 
 
@@ -444,7 +416,7 @@ async function handleCommand(target, context, msg, username) {
             const result = await connect_to_youtube(channel);
             console.log('[youtube] ytconnect result:', result);
             if (result === 'no id') twitch_try_say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
-            if (result === 'no live') twitch_try_say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getYoutubeId(channel) + '/live');
+            if (result === 'no live') twitch_try_say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getChannelProperty(channel, 'youtube_id') + '/live');
         }
     } else if (commandName === '!ytdisconnect') {
         if (has_permission(context)) {
@@ -498,7 +470,7 @@ async function disconnect_from_youtube(channel) { //channel is a twitch channel
 
 async function connect_to_youtube(channel) { //channel is a twitch channel
     disconnect_from_youtube(channel);
-    const youtube_id = await getYoutubeId(channel);
+    const youtube_id = await getChannelProperty(channel, 'youtube_id');
     if (!youtube_id) {
         console.error('[youtube] no channel id associated with twitch channel ' + channel);
         return 'no id';
@@ -526,7 +498,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
             console.log(`[youtube] [for twitch.tv/${channel}] ${author}: ${message}`);
             if (message !== undefined) {
                 send_chat(channel, author, undefined, message);
-                const fwd_cmds_yt_twitch = await getFwdCmdsYtTwitch(channel);
+                const fwd_cmds_yt_twitch = await getChannelProperty(channel, 'fwd_cmds_yt_twitch');
                 fwd_cmds_yt_twitch.forEach(command => {
                     if (message.startsWith(command)) {
                         twitch_try_say(channel, filter.clean(message));
@@ -569,6 +541,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
     // Handle end event
     mc.on("end", () => {
         console.log(`[youtube] [for twitch.tv/${channel}] live stream has ended or chat was disconnected`);
+        twitch_try_say(channel, `disconnected from youtube chat`);
     });
 
     // Start polling live chat API
@@ -612,6 +585,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO youtube emotes
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
-//TODO abstract out the sharing of state thru sockets
+//TODO abstract out the sharing of state thru sockets?
 //TODO failed to get chat messages after saying it was connected on the 1min timer
-
+//TODO bot missing username when enabled and already has youtube_id ": connected to youtube chat"
