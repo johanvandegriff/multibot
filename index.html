@@ -4,7 +4,144 @@
 <head>
     <title>JJ's Cool Bot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" type="text/css" href="/static/style.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            /* box-sizing: border-box; */
+        }
+
+        /*temp border*/
+        /* div {
+            border: 1px red;
+            border-style: dashed;
+        } */
+
+        html {
+            height: 100%;
+        }
+
+        body {
+            height: 100%;
+            line-height: 1.6;
+            font-size: 18px;
+            background-color: #333;
+            color: white;
+        }
+
+        #login {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 1;
+            border: 1px solid white;
+            /* padding: 2px 0px 0px 2px; */
+            margin: 0px 1px;
+            height: 30px;
+        }
+
+        #login img {
+            height: 30px;
+        }
+
+        #super_admin {
+            border: 1px solid red;
+            border-radius: 5px;
+            background-color: #611;
+            padding: 4px 4px 3px 4px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        #left_container {
+            width: 50%;
+        }
+
+        #nicknames {
+            list-style-type: none;
+            font-weight: bold;
+            padding: 10px;
+        }
+
+        #nicknames_container {
+            width: 50%;
+        }
+
+        .edit {
+            font-size: larger;
+            color: white;
+        }
+
+        .delete {
+            color: white;
+        }
+
+        .nickname {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        .equals {
+            color: white
+        }
+
+        #chat {
+            width: 50%;
+            height: 100%;
+            float: right;
+            right: 0;
+            top: 0;
+            position: fixed;
+            background: #18181B;
+        }
+
+        #chat-header {
+            height: 100px;
+        }
+
+        #messages {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            height: calc(100vh - 100px);
+            overflow-y: scroll;
+            word-wrap: break-word;
+            background: #18181B;
+        }
+
+        #messages li {
+            padding: 2px 10px;
+        }
+
+        /* #messages li:nth-child(odd) {
+            background: #eee;
+        } */
+
+        #about {
+            padding: 5px;
+        }
+
+        a:link {
+            color: DeepSkyBlue;
+            background-color: transparent;
+        }
+
+        a:visited {
+            color: Magenta;
+            background-color: transparent;
+            text-decoration: none;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            line-height: 1.2
+        }
+    </style>
 </head>
 
 <body>
@@ -65,7 +202,6 @@
                     <span v-else>(no youtube channel connected)</span>
                     <button @click="check_youtube_status">check youtube chat status</button>
 
-                    <p>
                     <h2>Forward Commands from Youtube to Twitch</h2>
                     <ul>
                         <li v-for="cmd, i in fwd_cmds_yt_twitch"><input type="text" v-model="cmd" />
@@ -75,7 +211,6 @@
                         <li><button @click="fwd_cmds_yt_twitch.push(new_cmd); new_cmd = ''; send_cmds();">add
                                 new:</button><input type="text" v-model="new_cmd" /></li>
                     </ul>
-                    </p>
                 </span>
                 <span v-else>
                     <p style="background-color: #555; padding: 5px">
@@ -85,21 +220,80 @@
                     </p>
                 </span>
             </span>
+            <span v-if="channel && channels">
+                <h2>Nickname Ledger</h2>
+                <span v-if="channel === login || is_super_admin">
+                    max nickname length: <input @keyup="set_max_nickname_length" @click="set_max_nickname_length"
+                        v-model="max_nickname_length" type="number">
+                    greetz_threshold: <input @keyup="set_greetz_threshold" @click="set_greetz_threshold"
+                        v-model="greetz_threshold" type="number">
+                    greetz_wb_threshold: <input @keyup="set_greetz_wb_threshold" @click="set_greetz_wb_threshold"
+                        v-model="greetz_wb_threshold" type="number">
+                </span>
+                <span v-if="channels.includes(channel)">
+                    <p v-if="channel === login || is_super_admin" style="padding: 5px">
+                        Use <code>!setnickname</code> in the chat to show up here!
+                    </p>
+                    <p v-else style="background-color: #292; padding: 5px">
+                        Use <code>!setnickname</code> in [[ channel ]]'s chat to show up here!
+                    </p>
+                </span>
+                <p v-else-if="!(channel === login || is_super_admin)" style="background-color: #d22; padding: 5px">
+                    The bot is NOT enabled on this channel ([[ channel ]]), ask the streamer to enable it by
+                    visiting this page and logging in.
+                </p>
+                <ul id="nicknames">
+                    <li v-for="username in Object.keys(nicknames)" :style="{ color: compute_color(username) }">
+                        <span v-if="editing_username === username">
+                            <input v-model="editing_nickname">
+                            <button @click="save_nickname">done</button>
+                        </span>
+                        <span v-else>
+                            <span class="edit" v-if="loggedIn && channel === login || is_super_admin"
+                                @click="editing_nickname = nicknames[username]; editing_username = username">✎
+                            </span>
+                            <span class="nickname">[[ nicknames[username] ]]</span>
+                        </span>
+                        <span class="equals"> = </span>
+                        <span class="username">[[ username ]]</span>
+                        <span class="delete" v-if="loggedIn && channel === login || is_super_admin">
+                            &nbsp;<button class="custom_greetz" @click="set_custom_greetz(username)">custom greetz
+                                ([[ custom_greetz[username] || 'none set' ]])</button>
+                            <span class="delete" @click="delete_nickname(username)"> ⓧ</span>
+                        </span>
+                    </li>
+                    <li v-if="loggedIn && channel === login || is_super_admin">
+                        <input v-model="new_nickname" style="width: 100px">
+                        <span class="equals"> = </span>
+                        <input v-model="new_username">
+                        <button @click="add_nickname">&nbsp; + &nbsp;</button>
+                        (case sensitive)
+                    </li>
+                </ul>
+            </span>
         </div>
 
         <div :id="is_chat_fullscreen ? 'chat_fullscreen' : 'chat'">
             <div id="chat-header" v-if="!is_chat_fullscreen">
                 <h2>Chat</h2>
                 <a style="top: 0; position: absolute; left: 100px" target="_blank"
-                    :href="'/chat?channel=' + channel">pop-out<img style="width:20px"
-                        src="/static/external-link-ltr-icon.svg" alt="popout chat" /></a>
+                    :href="'/chat?channel=' + channel + '&show_usernames=' + show_usernames + '&show_nicknames=' + show_nicknames">pop-out<img
+                        style="width:20px" src="/static/external-link-ltr-icon.svg" alt="popout chat" /></a>
+                <label><input type="checkbox" v-model="show_nicknames">show nicknames</label>&nbsp;
+                <label><input type="checkbox" v-model="show_usernames">show usernames</label>
+
             </div>
             <ul id="messages"
                 :style="is_chat_fullscreen ? { 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' } : {}">
                 <li v-for="msg in chat">
                     <!-- TODO: get the correct username color from youtube -->
-                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">[[
-                        msg.username ]]</span>
+                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">
+                        <span v-if="show_usernames || !(show_nicknames && msg.nickname)">[[ msg.username ]]</span>
+                        <span v-if="show_nicknames && msg.nickname">
+                            <span v-if="show_usernames"> (<span class="nickname">[[ msg.nickname ]]</span>)</span>
+                            <span v-else> <span class="nickname">[[ msg.nickname ]]</span></span>
+                        </span>
+                    </span>
                     <span>: </span>
                     <span v-if="msg.emotes">
                         <span v-for="{ type, value, raw } in this.parseEmotesInMessage(msg.emotes, msg.text)">
@@ -165,6 +359,17 @@
                     getEmoteAsUrl: getEmoteAsUrl,
                     is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
                     bgcolor: '{{bgcolor}}',
+                    max_nickname_length: undefined,
+                    greetz_threshold: undefined,
+                    greetz_wb_threshold: undefined,
+                    nicknames: {},
+                    editing_username: undefined,
+                    editing_nickname: '',
+                    new_nickname: '',
+                    new_username: '',
+                    custom_greetz: {},
+                    show_usernames: '{{show_usernames}}' !== 'false',
+                    show_nicknames: '{{show_nicknames}}' !== 'false',
                 }
             },
             methods: {
@@ -185,7 +390,7 @@
                     console.error('socket error');
                 },
                 socket_chat(msg) {
-                    console.log('chat: ', msg);
+                    console.log('chat:', msg);
                     if (msg.clear_chat) {
                         console.log('clear_chat', msg.clear_chat);
                         this.chat = [];
@@ -194,15 +399,44 @@
                         this.scroll_chat();
                     }
                 },
+                socket_nickname(msg) {
+                    console.log('nickname:', msg);
+                    if (msg.nickname === undefined) {
+                        delete this.nicknames[msg.username];
+                    } else {
+                        this.nicknames[msg.username] = msg.nickname;
+                    }
+                    this.chat.map(m => {
+                        if (m.username === msg.username) {
+                            m.nickname = msg.nickname;
+                        }
+                        return m;
+                    })
+                },
                 socket_event(msg) {
                     console.log('event: ', msg);
+                    if (msg.fwd_cmds_yt_twitch !== undefined) {
+                        console.log(msg.fwd_cmds_yt_twitch);
+                        this.fwd_cmds_yt_twitch = msg.fwd_cmds_yt_twitch;
+                    }
+                    if (msg.max_nickname_length !== undefined) {
+                        this.max_nickname_length = msg.max_nickname_length;
+                    }
+                    if (msg.greetz_threshold !== undefined) {
+                        this.greetz_threshold = msg.greetz_threshold;
+                    }
+                    if (msg.greetz_wb_threshold !== undefined) {
+                        this.greetz_wb_threshold = msg.greetz_wb_threshold;
+                    }
+                    if (msg.username && msg.custom_greetz !== undefined) {
+                        this.custom_greetz[msg.username] = msg.custom_greetz;
+                    }
+                },
+                socket_global_event(msg) {
+                    console.log('global_event:', msg);
                     if (msg.channel && msg.enabled !== undefined) {
                         console.log(msg.channel, msg.enabled, this.channels);
                         this.get_channels(); //TODO just adjust what changed instead of getting everything
-                    }
-                    if (msg.channel && msg.fwd_cmds_yt_twitch !== undefined) {
-                        console.log(msg.channel, msg.fwd_cmds_yt_twitch);
-                        this.fwd_cmds_yt_twitch = msg.fwd_cmds_yt_twitch;
                     }
                 },
                 load_from_local_url() {
@@ -225,6 +459,66 @@
                     if (await res.text() === 'wait') {
                         alert('please wait 5 seconds and try again');
                     }
+                },
+                set_max_nickname_length() {
+                    if (this.max_nickname_length !== '') {
+                        fetch_post('/max_nickname_length', {
+                            channel: this.channel,
+                            max_nickname_length: this.max_nickname_length,
+                        });
+                    }
+                },
+                set_greetz_threshold() {
+                    if (this.greetz_threshold !== '') {
+                        fetch_post('/greetz_threshold', {
+                            channel: this.channel,
+                            greetz_threshold: this.greetz_threshold,
+                        });
+                    }
+                },
+                set_greetz_wb_threshold() {
+                    if (this.greetz_wb_threshold !== '') {
+                        fetch_post('/greetz_wb_threshold', {
+                            channel: this.channel,
+                            greetz_wb_threshold: this.greetz_wb_threshold,
+                        });
+                    }
+                },
+                set_custom_greetz(username) {
+                    let new_greetz = prompt(`custom greetz for ${username} (put # where the nickname goes, for example "hola, #")`, this.custom_greetz[username]);
+                    if (!new_greetz) {
+                        new_greetz = '';
+                    }
+                    fetch_post('/custom_greetz', { channel: this.channel, username: username, custom_greetz: new_greetz });
+                },
+                save_nickname() {
+                    fetch_post('/nickname', {
+                        channel: this.channel,
+                        username: this.editing_username,
+                        nickname: this.editing_nickname,
+                    })
+                        .then(this.editing_username = undefined);
+                },
+                add_nickname() {
+                    fetch_post('/nickname', {
+                        channel: this.channel,
+                        username: this.new_username,
+                        nickname: this.new_nickname,
+                    })
+                        .then(() => {
+                            this.new_username = '';
+                            this.new_nickname = '';
+                        });
+                },
+                delete_nickname(username) {
+                    fetch_post('/nickname', {
+                        channel: this.channel,
+                        username: username,
+                        nickname: undefined,
+                    })
+                        .then(() => {
+                            delete this.nicknames[username];
+                        });
                 },
                 custom_channel() {
                     this.channel = prompt('enter channel name').toLowerCase();
@@ -288,9 +582,11 @@ isLive: ${json.listener?.isLive}`);
                     this.socket.on('connect_failed', this.socket_error);
                     this.socket.on('disconnect', this.socket_error);
 
-                    console.log('LISTENING ON:', this.channel + '/chat', 'events');
+                    console.log('LISTENING ON:', this.channel + '/chat', this.channel + '/nickname', this.channel + '/event', 'global_events');
                     this.socket.on(this.channel + '/chat', this.socket_chat);
-                    this.socket.on('events', this.socket_event);
+                    this.socket.on(this.channel + '/nickname', this.socket_nickname);
+                    this.socket.on(this.channel + '/event', this.socket_event);
+                    this.socket.on('global_events', this.socket_global_event);
 
                     fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
                         .then(res => res.json())
@@ -298,6 +594,9 @@ isLive: ${json.listener?.isLive}`);
                             this.chat = json;
                             this.scroll_chat();
                         });
+                    fetch('/custom_greetz?channel=' + encodeURIComponent(this.channel))
+                        .then(res => res.json())
+                        .then(json => this.custom_greetz = json);
                 },
             },
             mounted() {
@@ -320,9 +619,22 @@ isLive: ${json.listener?.isLive}`);
                     if (this.socket) {
                         this.socket.disconnect();
                     }
-                    this.chat = []
+                    this.chat = [];
+                    this.nicknames = {};
 
                     if (this.channel) {
+                        fetch('/max_nickname_length?channel=' + encodeURIComponent(this.channel))
+                            .then(res => res.json())
+                            .then(json => this.max_nickname_length = json);
+                        fetch('/greetz_threshold?channel=' + encodeURIComponent(this.channel))
+                            .then(res => res.json())
+                            .then(json => this.greetz_threshold = json);
+                        fetch('/greetz_wb_threshold?channel=' + encodeURIComponent(this.channel))
+                            .then(res => res.json())
+                            .then(json => this.greetz_wb_threshold = json);
+                        fetch('/nickname?channel=' + encodeURIComponent(this.channel))
+                            .then(res => res.json())
+                            .then(json => this.nicknames = json);
                         this.get_youtube_id();
                         this.connect_to_socket_chat();
                         fetch('/fwd_cmds_yt_twitch?channel=' + encodeURIComponent(this.channel))

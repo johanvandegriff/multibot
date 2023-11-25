@@ -1,3 +1,85 @@
+const DEFAULT_PORT = 8080;
+const JSON_DB_FILE = '/srv/data.json';
+const SECRETS_FILE = '/srv/secret.env';
+const CHAT_HISTORY_LENGTH = 100;
+const chat_history = {};
+const carl_history = {};
+const HOUR_IN_MILLISECONDS = 1 * 60 * 60 * 1000;
+const DEFAULT_CHANNEL_PROPERTIES = {
+    'enabled': false,
+    'fwd_cmds_yt_twitch': ['!sr', '!test'],
+    'youtube_id': '',
+    'max_nickname_length': 20,
+    'greetz_threshold': 5 * HOUR_IN_MILLISECONDS,
+    'greetz_wb_threshold': 0.75 * HOUR_IN_MILLISECONDS,
+    'custom_greetz': {},
+}
+const DEFAULT_VIEWER_PROPERTIES = {
+    'custom_greetz': '',
+    'last_seen': undefined,
+}
+const DEFAULT_BOT_NICKNAME = '🤖';
+const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
+const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
+const GREETZ_DELAY_FOR_COMMAND = 2 * 1000; //wait 2 seconds to greet when the user ran a command
+const TWITCH_MESSAGE_DELAY = 500; //time to wait between twitch chats for both to go thru
+const ENABLED_COOLDOWN = 5 * 1000; //only let users enable/disable their channel every 5 seconds
+
+const GREETZ = [
+    'yo #',
+    'yo #',
+    'yo yo #',
+    'yo yo yo #',
+    'yo yo yo # whats up!',
+    'heyo #',
+    'yooo # good to see u',
+    'good to see u #',
+    'hi #',
+    'hello #',
+    'helo #',
+    'whats up #',
+    'hey #, whats up?',
+    'welcome #',
+    'welcome in, #',
+    'greetings #',
+    'hows it going #',
+    'hey whats new with you #',
+    'how have you been #',
+];
+
+const GREETZ_ALSO = [
+    'also hi #',
+    'also hi # whats up!',
+    'also its good to see u #',
+    'also whats up #',
+    'also, whats up #?',
+    'also welcome #',
+    'also welcome in, #',
+    'also welcome to chat, #',
+    'also welcome to the stream, #',
+    'also hows it going #',
+    'also how have you been #',
+];
+
+
+const GREETZ_WELCOME_BACK = [
+    'welcome back #',
+    'welcome back in, #',
+    'welcome back to chat, #',
+    'good to see u again #',
+    'hello again #',
+    'hi again #',
+];
+
+const GREETZ_WELCOME_BACK_ALSO = [
+    'also welcome back #',
+    'also welcome back in, #',
+    'also welcome back to chat, #',
+    'also good to see u again #',
+    'also hello again #',
+    'also hi again #',
+];
+
 const http = require('http');
 const https = require('https');
 const dotenv = require('dotenv'); //for storing secrets in an env file
@@ -19,20 +101,8 @@ var filter = require('profanity-filter');
 filter.seed('profanity');
 filter.isProfane = (s) => s !== filter.clean(s);
 
-
-dotenv.config({ path: '/srv/secret.env' }) //bot API key and other info
-const DEFAULT_PORT = 8080;
-const JSON_DB_FILE = '/srv/channels.json';
-const CHAT_HISTORY_LENGTH = 100;
-const chat_history = {};
+dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
 const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
-const DEFAULT_CHANNEL_PROPERTIES = {
-    'enabled': false,
-    'fwd_cmds_yt_twitch': ['!sr', '!test'],
-    'youtube_id': '',
-}
-const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
-const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 // Initialize Express and middlewares
@@ -112,7 +182,7 @@ const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
 app.get('/', function (req, res) { res.send(template({ channel: '', user: req.session?.passport?.user })); });
-app.get('/chat', (req, res) => { res.send(template({ is_chat_fullscreen: true, channel: req.query.channel, bgcolor: req.query.bgcolor || 'transparent' })) });
+app.get('/chat', (req, res) => { res.send(template({ is_chat_fullscreen: true, channel: req.query.channel, bgcolor: req.query.bgcolor || 'transparent', show_usernames: req.query.show_usernames, show_nicknames: req.query.show_nicknames })) });
 
 app.get('/logout', function (req, res, next) {
     req.logout(function (err) {
@@ -133,13 +203,7 @@ app.use('/static', express.static('static'));
 
 //expose the list of channels
 app.get('/channels', async (req, res) => { res.send(JSON.stringify({ channels: await getEnabledChannels(), all_channels: await getChannels() })) });
-app.get('/chat_history', async (req, res) => {
-    if (chat_history[req.query.channel]) {
-        res.send(JSON.stringify(chat_history[req.query.channel]));
-    } else {
-        res.send(JSON.stringify([]));
-    }
-});
+app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history[req.query.channel] || [])) });
 
 function channel_auth_middleware(req, res, next) {
     const login = req.session?.passport?.user?.login;
@@ -152,18 +216,28 @@ function channel_auth_middleware(req, res, next) {
     }
 }
 
-function validate_middleware(param_name, param_type) {
+function better_typeof(data) {
+    if (data?.constructor === Array) return 'Array';
+    if (data?.constructor === Object) return 'Object';
+    return typeof (data); //for example, 'string', 'number', 'undefined', etc.
+}
+
+function validate_middleware(param_name, param_types, validator = undefined) {
+    if (better_typeof(param_types) !== 'Array') {
+        param_types = [param_types];
+    }
     return (req, res, next) => {
         const data = req.body[param_name];
-        if (
-            (param_type === 'Array' && data.constructor === Array) ||
-            (param_type === 'Object' && data.constructor === Object) ||
-            typeof data === param_type //for example, 'string', 'number', 'object' (which matches Array or Object)
-        ) {
-            next();
+        if (param_types.includes(better_typeof(data))) {
+            if (!validator || validator(data)) {
+                next();
+            } else {
+                console.error('invalid data, failed validator:', data);
+                res.status(400).send('invalid data, failed validator'); //400 Bad Request
+            }
         } else {
-            console.error('invalid data, expected ' + type + 'but got:', data);
-            res.status(400).send('invalid data, expected ' + type); //400 Bad Request
+            console.error('invalid data, expected ' + param_types + ' but got:', data);
+            res.status(400).send('invalid data, expected ' + param_types); //400 Bad Request
         }
     }
 }
@@ -176,18 +250,22 @@ app.post('/enabled', jsonParser, channel_auth_middleware, validate_middleware('e
     const enabled = req.body.enabled;
     const now = new Date();
     //only allow enabling/disabling every 5 seconds
-    if (!enabled_timeouts[channel] || now - enabled_timeouts[channel] > 5000) {
+    if (!enabled_timeouts[channel] || now - enabled_timeouts[channel] > ENABLED_COOLDOWN) {
         enabled_timeouts[channel] = now;
         const old_enabled = await getChannelProperty(channel, 'enabled');
         if (old_enabled !== enabled) {
             await setChannelProperty(channel, 'enabled', enabled);
             if (enabled) {
+                if (!await getViewerProperty(channel, 'nickname', process.env.TWITCH_BOT_USERNAME)) {
+                    await setViewerProperty(channel, 'nickname', process.env.TWITCH_BOT_USERNAME, DEFAULT_BOT_NICKNAME);
+                    send_nickname(channel, process.env.TWITCH_BOT_USERNAME, DEFAULT_BOT_NICKNAME);
+                }
                 connect_to_youtube(channel);
             } else {
                 disconnect_from_youtube(channel);
             }
             connectToTwitchChat();
-            send_event({ channel: channel, enabled: enabled });
+            send_global_event({ channel: channel, enabled: enabled });
         }
         res.end();
     } else {
@@ -195,12 +273,52 @@ app.post('/enabled', jsonParser, channel_auth_middleware, validate_middleware('e
     }
 });
 
-app.get('/fwd_cmds_yt_twitch', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'fwd_cmds_yt_twitch')) });
-app.post('/fwd_cmds_yt_twitch', jsonParser, channel_auth_middleware, validate_middleware('fwd_cmds_yt_twitch', 'Array'), async (req, res) => {
+function add_api_channel_property(property_name, property_types, validator = undefined) {
+    app.get('/' + property_name, async (req, res) => { res.send(JSON.stringify(await getChannelProperty(req.query.channel, property_name))) });
+    app.post('/' + property_name, jsonParser, channel_auth_middleware, validate_middleware(property_name, property_types, validator), async (req, res) => {
+        const channel = req.body.channel;
+        const property_value = req.body[property_name];
+        await setChannelProperty(channel, property_name, property_value);
+        send_event(channel, { [property_name]: property_value });
+        res.end();
+    });
+}
+
+add_api_channel_property('max_nickname_length', 'number', validator = x => x > 0);
+add_api_channel_property('fwd_cmds_yt_twitch', 'Array');
+add_api_channel_property('greetz_threshold', 'number');
+add_api_channel_property('greetz_wb_threshold', 'number');
+
+function add_api_viewer_property(property_name, property_types, validator = undefined) {
+    app.get('/' + property_name, async (req, res) => { res.send(JSON.stringify(await getViewerProperty(req.query.channel, property_name, req.query.username))) });
+    app.post('/' + property_name, jsonParser, channel_auth_middleware, validate_middleware(property_name, property_types, validator), async (req, res) => {
+        const channel = req.body.channel;
+        const username = req.body.username;
+        const property_value = req.body[property_name];
+        await setViewerProperty(channel, property_name, username, property_value);
+        send_event(channel, { username: username, [property_name]: property_value });
+        res.end();
+    });
+}
+
+add_api_viewer_property('custom_greetz', 'string');
+
+app.get('/nickname', async (req, res) => { res.send(JSON.stringify(await getViewerProperty(req.query.channel, 'nickname', req.query.username))) });
+app.post('/nickname', jsonParser, channel_auth_middleware, validate_middleware('nickname', ['string', 'undefined']), async (req, res) => {
     const channel = req.body.channel;
-    const fwd_cmds_yt_twitch = req.body.fwd_cmds_yt_twitch;
-    await setChannelProperty(channel, 'fwd_cmds_yt_twitch', fwd_cmds_yt_twitch);
-    send_event({ channel: channel, fwd_cmds_yt_twitch: fwd_cmds_yt_twitch });
+    const username = req.body.username;
+    const nickname = req.body.nickname;
+    const caller_display_name = req.session.passport.user.display_name;
+
+    await setViewerProperty(channel, 'nickname', username, nickname);
+    send_nickname(channel, username, nickname);
+    if (nickname) {
+        twitch_try_say(channel, `admin ${caller_display_name} set ${username} 's nickname to ${nickname}`);
+    } else {
+        await setViewerProperty(channel, 'custom_greetz', username, undefined);
+        twitch_try_say(channel, `admin ${caller_display_name} removed ${username} 's nickname`);
+    }
+    updateChatHistory(channel);
     res.end();
 });
 
@@ -293,6 +411,45 @@ async function setChannelProperty(channel, property_name, property_value) {
 }
 
 
+async function getViewerProperty(channel, property_name, username) {
+    if (username) {
+        try {
+            return await db.getData('/channels/' + channel + '/' + property_name + '/' + username);
+        } catch (error) {
+            return DEFAULT_VIEWER_PROPERTIES[property_name];
+        }
+    } else {
+        return await getChannelProperty(channel, property_name);
+    }
+}
+async function setViewerProperty(channel, property_name, username, property_value) {
+    if (property_value) {
+        await db.push('/channels/' + channel + '/' + property_name + '/' + username, property_value);
+    } else {
+        await db.delete('/channels/' + channel + '/' + property_name + '/' + username);
+    }
+}
+
+
+function random_choice(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+async function parse_greetz(stock_greetz_array, channel, username) {
+    const nickname = await getViewerProperty(channel, 'nickname', username);
+    const custom_greetz = await getViewerProperty(channel, 'custom_greetz', username);
+    let message;
+    if (custom_greetz) {
+        message = custom_greetz;
+    } else {
+        message = random_choice(stock_greetz_array);
+    }
+    // return '@' + username + ' ' + message.replaceAll('#', nickname);
+    return message.replaceAll('@', '@' + username).replaceAll('#', nickname);
+    // return '@' + username + ' ' + message.replaceAll('@', '@' + username).replaceAll('#', nickname);
+}
+
+
 //use socket.io to make a simple live chatroom
 io.on('connection', (socket) => {
     console.log('[socket.io] a user connected');
@@ -307,8 +464,8 @@ io.on('connection', (socket) => {
     });
 });
 
-function send_chat(channel, username, color, text, emotes) {
-    const iomsg = { username: username, color: color, emotes: emotes, text: text };
+function send_chat(channel, username, nickname, color, text, emotes) {
+    const iomsg = { username: username, nickname: nickname, color: color, emotes: emotes, text: text };
     if (!chat_history[channel]) {
         chat_history[channel] = [];
     }
@@ -316,20 +473,32 @@ function send_chat(channel, username, color, text, emotes) {
     if (chat_history[channel].length > CHAT_HISTORY_LENGTH) {
         chat_history[channel].shift();
     }
-    console.log(`[socket.io] SEND CHAT ${username} (color: ${color} emotes: ${JSON.stringify(emotes)}): ${text}`);
+    console.log(`[socket.io] SEND CHAT [${channel}] ${username} (nickname: ${nickname} color: ${color} emotes: ${JSON.stringify(emotes)}): ${text}`);
     io.emit(channel + '/chat', iomsg);
 }
 
-function send_event(msg) {
-    console.log(`[socket.io] SEND EVENT`, msg);
-    io.emit('events', msg);
+function send_nickname(channel, username, nickname) {
+    console.log(`[socket.io] SEND NICKNAME [${channel}] ${nickname} = ${username}`);
+    io.emit(channel + '/nickname', { username: username, nickname: nickname });
+}
+
+function send_event(channel, msg) {
+    console.log(`[socket.io] SEND EVENT [${channel}]`, msg);
+    io.emit(channel + '/event', msg);
+}
+
+function send_global_event(msg) {
+    console.log(`[socket.io] SEND GLOBAL EVENT`, msg);
+    io.emit('global_event', msg);
 }
 
 //twitch chat stuff
 var tmi_client = undefined;
 
 function twitch_try_say(channel, message) {
-    tmi_client.say(channel, message).catch(error => console.error('[twitch] tmi say error:', error));
+    if (tmi_client) {
+        tmi_client.say(channel, message).catch(error => console.error('[twitch] tmi say error:', error));
+    }
 }
 
 async function connectToTwitchChat() {
@@ -376,11 +545,46 @@ async function onMessageHandler(target, context, msg, self) {
     // Ignore whispers
     if (context["message-type"] === "whisper") { return; }
 
+    const nickname = await getViewerProperty(channel, 'nickname', username);
+
     //forward message to socket chat
-    send_chat(channel, username, context.color, msg, context.emotes);
+    send_chat(channel, username, nickname, context.color, msg, context.emotes);
 
     if (self) { return; } // Ignore messages from the bot
-    await handleCommand(target, context, msg, username);
+    const [valid_command, carl_command] = await handleCommand(target, context, msg, username);
+
+    //keep track of when the last message was
+    if (username.toLowerCase() !== process.env.TWITCH_BOT_USERNAME.toLowerCase()) {
+        if (nickname !== undefined) {
+            if (!carl_command) { //carl already replies, no need for double
+                const lastSeen = await getViewerProperty(channel, 'lastseen', username);
+                const now = + new Date();
+                console.log('[greetz]', username, now - lastSeen);
+                if (lastSeen === undefined || now - lastSeen > await getChannelProperty(channel, 'greetz_threshold')) {
+                    if (valid_command) { //if the user was running a command, wait a few seconds, then greet them, but with an "also" added
+                        console.log('[greetz] user has been away a long time, but issued a command, so sending initial greeting in a few seconds');
+                        setTimeout(async () => {
+                            twitch_try_say(target, await parse_greetz(GREETZ_ALSO, channel, username));
+                        }, GREETZ_DELAY_FOR_COMMAND);
+                    } else {
+                        console.log('[greetz] user has been away a long time, sending initial greeting');
+                        twitch_try_say(target, await parse_greetz(GREETZ, channel, username));
+                    }
+                } else if (lastSeen === undefined || now - lastSeen > await getChannelProperty(channel, 'greetz_wb_threshold')) {
+                    if (valid_command) { //if the user was running a command, wait a few seconds, then greet them, but with an "also" added
+                        console.log('[greetz] user has been away a short time, but issued a command, so sending welcome back greeting in a few seconds');
+                        setTimeout(async () => {
+                            twitch_try_say(target, await parse_greetz(GREETZ_WELCOME_BACK_ALSO, channel, username));
+                        }, GREETZ_DELAY_FOR_COMMAND);
+                    } else {
+                        console.log('[greetz] user has been away a short time, sending welcome back greeting');
+                        twitch_try_say(target, await parse_greetz(GREETZ_WELCOME_BACK, channel, username));
+                    }
+                }
+            }
+            setViewerProperty(channel, 'lastseen', username, + new Date());
+        }
+    }
 }
 
 function is_super_admin(username) {
@@ -391,32 +595,164 @@ function has_permission(context) {
     return is_super_admin(context?.username) || context?.badges?.broadcaster === '1' || context?.badges?.moderator === '1';
 }
 
+async function getNicknameMsg(channel, username) {
+    const nickname = await getViewerProperty(channel, 'nickname', username);
+    if (nickname === undefined) {
+        if (filter.isProfane(username)) {
+            return `that user has not set a nickname yet (with !setnickname)`;
+        } else {
+            return `user ${username} has not set a nickname yet (with !setnickname)`;
+        }
+    }
+    return `${username} 's nickname is ${nickname}`;
+}
+
+async function getUsername(channel, nickname) {
+    const nicknames = await getChannelProperty(channel, 'nickname');
+    let found = undefined;
+    Object.keys(nicknames).forEach(username => {
+        if (nicknames[username] === nickname) {
+            found = username;
+        }
+    });
+    return found;
+}
+
+async function getUsernameMsg(channel, nickname) {
+    const username = await getUsername(channel, nickname);
+    if (username === undefined) {
+        if (filter.isProfane(nickname)) {
+            return `that nickname does not belong to anyone, and furthermore is profane and cannot be used`;
+        } else {
+            return `nickname "${nickname}" does not belong to anyone (claim it with !setnickname)`;
+        }
+    }
+    return `${nickname} is the nickname for ${username}`;
+    // return `${username} 's nickname is ${nickname}`;
+}
+
+async function nicknameAlreadyTaken(channel, nickname) {
+    const nicknames = Object.values(await getChannelProperty(channel, 'nickname'));
+    return nicknames.includes(nickname);
+}
+
+async function updateChatHistory(channel) {
+    if (chat_history[channel]) {
+        const nicknames = await getChannelProperty(channel, 'nickname');
+        chat_history[channel].forEach(msg => {
+            msg.nickname = nicknames[msg.username];
+        });
+    }
+}
+
 async function handleCommand(target, context, msg, username) {
     // Remove whitespace and 7TV bypass from chat message
     const command = msg.replaceAll(' 󠀀', '').trim();
     const channel = target.replace('#', '');
 
     var valid = true;
+    var carl = false;
     // If the command is known, let's execute it
     if (command === '!help' || command === '!commands') {
-        twitch_try_say(target, `commands: !multichat - get the link to the combined youtube/twitch chat; !clear - clear the multichat; SOON TO BE DEPRECATED: !ytconnect - connect to the youtube chat once you have started stream (now happens automatically); !ytdisconnect - disconnect from the youtube chat (broken - might not stay disconnected)`);
+        twitch_try_say(target, `commands: !botpage - link to the page with nicknames and other info; !multichat - link to the combined youtube/twitch chat; !clear - clear the multichat; !setnickname - set your nickname; !nickname - view your nickname; !nickname user - view another user's nickname; !username nickname - look up who owns a nickname; !unsetnickname - delete your nickname`);
+    } else if (command === '!botpage') {
+        twitch_try_say(target, `see the nicknames and other bot info at ${process.env.BASE_URL}/${target}`);
     } else if (command === '!multichat') {
-        twitch_try_say(target, `see the multichat at ${process.env.BASE_URL}/${target}`);
-    } else if (command === '!ytconnect') {
-        if (has_permission(context)) {
-            const result = await connect_to_youtube(channel);
-            console.log('[youtube] ytconnect result:', result);
-            if (result === 'no id') twitch_try_say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
-            if (result === 'no live') twitch_try_say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getChannelProperty(channel, 'youtube_id') + '/live');
-        }
-    } else if (command === '!ytdisconnect') {
-        if (has_permission(context)) {
-            disconnect_from_youtube(channel);
-        }
+        twitch_try_say(target, `see the multichat at ${process.env.BASE_URL}/chat?channel=${channel} and even add it as an OBS browser source`);
+        // } else if (command === '!ytconnect') {
+        //     if (has_permission(context)) {
+        //         const result = await connect_to_youtube(channel);
+        //         console.log('[youtube] ytconnect result:', result);
+        //         if (result === 'no id') twitch_try_say(channel, `no youtube account linked, log in with twitch here to add your youtube channel: ${process.env.BASE_URL}/${target}`);
+        //         if (result === 'no live') twitch_try_say(channel, 'failed to find youtube livestream on your channel: youtube.com/channel/' + await getChannelProperty(channel, 'youtube_id') + '/live');
+        //     }
+        // } else if (command === '!ytdisconnect') {
+        //     if (has_permission(context)) {
+        //         disconnect_from_youtube(channel);
+        //     }
     } else if (command === '!clear') {
         if (has_permission(context)) {
             clear_chat(channel);
         }
+    } else if (command === '!nickname') { //retrieve the nickname of the user who typed it
+        twitch_try_say(target, await getNicknameMsg(channel, username));
+    } else if (command.startsWith('!nickname ')) { //retrieve a nickname for a specific user
+        const lookup_username = command.replace('!nickname', '').trim();
+        twitch_try_say(target, await getNicknameMsg(channel, lookup_username));
+    } else if (command.startsWith('!username ')) { //retrieve a username based on a nickname
+        const nickname = command.replace('!username', '').trim();
+        twitch_try_say(target, await getUsernameMsg(channel, nickname));
+    } else if (command === '!unsetnickname') {
+        const nickname = await getViewerProperty(channel, 'nickname', username);
+        if (nickname) {
+            await setViewerProperty(channel, 'nickname', username, undefined); //delete the nickname
+            send_nickname(channel, username, undefined);
+            updateChatHistory(channel);
+            twitch_try_say(target, `@${username} removed nickname, sad to see you go`);
+        } else {
+            twitch_try_say(target, `@${username} you already don't have a nickname`);
+        }
+    } else if (command === '!setnickname') {
+        twitch_try_say(target, `please provide a nickname with the !setnickname command`);
+    } else if (command.startsWith('!setnickname ')) {
+        const nickname = command.replace('!setnickname', '').trim();
+        const max_nickname_length = await getChannelProperty(channel, 'max_nickname_length')
+        if (filter.isProfane(nickname)) {
+            twitch_try_say(target, `@${username} no profanity allowed in nickname, use a different one or ask the streamer/admin to log in to the link at !botpage and set it for you`);
+        } else if (await getViewerProperty(channel, 'nickname', username) === nickname) {
+            twitch_try_say(target, `@${username} you already have that nickname`);
+        } else if (nickname.length > max_nickname_length) {
+            twitch_try_say(target, `@${username} nickname "${nickname}" is too long, must be ${max_nickname_length} letters`);
+        } else if (await nicknameAlreadyTaken(channel, nickname)) {
+            twitch_try_say(target, `@${username} nickname "${nickname}" is already taken, see !botpage for the list`);
+        } else {
+            await setViewerProperty(channel, 'nickname', username, nickname);
+            send_nickname(channel, username, nickname);
+            updateChatHistory(channel);
+            twitch_try_say(target, `@${username} set nickname to ${nickname}`);
+        }
+    } else if (command.includes(`@${process.env.TWITCH_BOT_USERNAME}`) || command.includes(`@${process.env.TWITCH_BOT_USERNAME}`.toLowerCase())) {
+        const message = command
+            .replaceAll(` @${process.env.TWITCH_BOT_USERNAME} `, '')
+            .replaceAll(` @${process.env.TWITCH_BOT_USERNAME} `.toLowerCase(), '')
+            .replaceAll(` @${process.env.TWITCH_BOT_USERNAME}`, '')
+            .replaceAll(` @${process.env.TWITCH_BOT_USERNAME}`.toLowerCase(), '')
+            .replaceAll(`@${process.env.TWITCH_BOT_USERNAME} `, '')
+            .replaceAll(`@${process.env.TWITCH_BOT_USERNAME} `.toLowerCase(), '')
+            .replaceAll(`@${process.env.TWITCH_BOT_USERNAME}`, '')
+            .replaceAll(`@${process.env.TWITCH_BOT_USERNAME}`.toLowerCase(), '');
+        console.log(`[bot] asking CARL: ${message}`);
+        let url = 'https://games.johanv.net/carl_api?user=' + encodeURIComponent(message);
+        const reply_parent = context['reply-parent-msg-body'];
+        if (reply_parent) {
+            const carl_said = carl_history[reply_parent];
+            if (carl_said) {
+                url = 'https://games.johanv.net/carl_api?carl=' + encodeURIComponent(carl_said) + '&user=' + encodeURIComponent(message);
+                console.log(`[bot] found reply parent in carl_history: "${reply_parent}" => ${carl_said}`);
+            }
+        }
+        const response = await fetch(url);
+        const data = await response.text();
+        if (response.status === 200) {
+            console.log("[bot] CARL:", data);
+            let display_data = data;
+            if (data.includes('CARL') || data.includes('Carl') || data.includes('carl')) {
+                const nickname = await getViewerProperty(channel, 'nickname', username);
+                display_data = data.replaceAll('CARL', nickname).replaceAll('Carl', nickname).replaceAll('carl', nickname);
+                console.log("[bot] CARL (edited): ", display_data);
+            }
+            if (filter.isProfane(display_data) || display_data.toLowerCase().includes('stupid') || display_data.toLowerCase().includes('dumb') || display_data.toLowerCase().includes('idiot')) {
+                display_data = `<3`;
+            }
+            const reply = `@${username} ${display_data}`
+            twitch_try_say(target, reply);
+            carl_history[reply] = data;
+            console.log(`[bot] saved to carl_history: "${reply}" => "${data}"`);
+        } else {
+            console.log('[bot] error', response.status, data);
+            twitch_try_say(target, `@${username} hey <3`);
+        }
+        carl = true;
     } else {
         valid = false;
         console.log(`[bot] Unknown command: ${command}`);
@@ -425,7 +761,8 @@ async function handleCommand(target, context, msg, username) {
     if (valid) {
         console.log(`[bot] Executed command: ${command}`);
     }
-    return valid;
+    return [valid, carl];
+
 }
 
 async function clear_chat(channel) {
@@ -475,7 +812,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
     }
     console.log(`[youtube] connected to youtube chat: youtu.be/${liveVideoId}`);
     //delay the message a bit to allow the disconnect message to come thru first
-    setTimeout(() => twitch_try_say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`), 500);
+    setTimeout(() => twitch_try_say(channel, `connected to youtube chat: youtu.be/${liveVideoId}`), TWITCH_MESSAGE_DELAY);
 
     const mc = await Masterchat.init(liveVideoId);
     // Listen for live chat
@@ -489,7 +826,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
             const message = stringify(chat.message);
             console.log(`[youtube] [for twitch.tv/${channel}] ${author}: ${message}`);
             if (message !== undefined) {
-                send_chat(channel, author, undefined, message);
+                send_chat(channel, author, undefined, undefined, message, undefined);
                 const fwd_cmds_yt_twitch = await getChannelProperty(channel, 'fwd_cmds_yt_twitch');
                 fwd_cmds_yt_twitch.forEach(command => {
                     if (message.startsWith(command)) {
@@ -581,3 +918,5 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO abstract out the sharing of state thru sockets?
 //TODO failed to get chat messages after saying it was connected on the 1min timer
 //TODO bot missing username when enabled and already has youtube_id ": connected to youtube chat"
+//TODO rethink the api paths to something like /api/channels/:channel/nicknames/:username etc.
+//TODO better UI for greetz threshold
