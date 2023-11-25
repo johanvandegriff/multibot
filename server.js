@@ -208,7 +208,7 @@ app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_hist
 function channel_auth_middleware(req, res, next) {
     const login = req.session?.passport?.user?.login;
     if (login === req.body.channel || is_super_admin(login)) {
-        console.log('auth success', req.body, login, is_super_admin);
+        console.log('auth success', req.body, login, is_super_admin(login));
         next();
     } else {
         console.error('access denied', req.body);

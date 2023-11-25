@@ -582,11 +582,11 @@ isLive: ${json.listener?.isLive}`);
                     this.socket.on('connect_failed', this.socket_error);
                     this.socket.on('disconnect', this.socket_error);
 
-                    console.log('LISTENING ON:', this.channel + '/chat', this.channel + '/nickname', this.channel + '/event', 'global_events');
+                    console.log('LISTENING ON:', this.channel + '/chat', this.channel + '/nickname', this.channel + '/event', 'global_event');
                     this.socket.on(this.channel + '/chat', this.socket_chat);
                     this.socket.on(this.channel + '/nickname', this.socket_nickname);
                     this.socket.on(this.channel + '/event', this.socket_event);
-                    this.socket.on('global_events', this.socket_global_event);
+                    this.socket.on('global_event', this.socket_global_event);
 
                     fetch('/chat_history?channel=' + encodeURIComponent(this.channel))
                         .then(res => res.json())
