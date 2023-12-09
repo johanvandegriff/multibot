@@ -13,6 +13,7 @@ const DEFAULT_CHANNEL_PROPERTIES = {
     'greetz_threshold': 5 * HOUR_IN_MILLISECONDS,
     'greetz_wb_threshold': 0.75 * HOUR_IN_MILLISECONDS,
     'custom_greetz': {},
+    'nickname': {},
 }
 const DEFAULT_VIEWER_PROPERTIES = {
     'custom_greetz': '',
@@ -100,6 +101,21 @@ const bodyParser = require('body-parser')
 var filter = require('profanity-filter');
 filter.seed('profanity');
 filter.isProfane = (s) => s !== filter.clean(s);
+
+const RANDOM_NICKNAMES_FILE = '/srv/random-nicknames.txt';
+const RANDOM_NICKNAMES = [];
+
+try {
+    fs.readFileSync(RANDOM_NICKNAMES_FILE).toString().split("\n").forEach(line => {
+        if (line !== '') {
+            // console.log(line);
+            RANDOM_NICKNAMES.push(line);
+        }
+    });
+    console.log(`loaded ${RANDOM_NICKNAMES.length} random nicknames`)
+} catch (err) {
+    console.error('error reading ' + RANDOM_NICKNAMES_FILE);
+}
 
 dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
 const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
@@ -693,7 +709,18 @@ async function handleCommand(target, context, msg, username) {
             twitch_try_say(target, `@${username} you already don't have a nickname`);
         }
     } else if (command === '!setnickname') {
-        twitch_try_say(target, `please provide a nickname with the !setnickname command`);
+        const used_nicknames = Object.values(await getViewerProperty(channel, 'nickname', undefined));
+        console.log(used_nicknames);
+        const remaining_random_nicknames = JSON.parse(JSON.stringify(RANDOM_NICKNAMES)).filter(nickname => !used_nicknames.includes(nickname));
+        if(remaining_random_nicknames.length > 0) {
+            const nickname = random_choice(remaining_random_nicknames);
+            await setViewerProperty(channel, 'nickname', username, nickname);
+            send_nickname(channel, username, nickname);
+            updateChatHistory(channel);
+            twitch_try_say(target, `@${username} no nickname provided, your random nickname is ${nickname}`);
+        } else {
+            twitch_try_say(target, `out of random nicknames to assign, please provide a nickname with the !setnickname command`);
+        }
     } else if (command.startsWith('!setnickname ')) {
         const nickname = command.replace('!setnickname', '').trim();
         const max_nickname_length = await getChannelProperty(channel, 'max_nickname_length')
@@ -911,7 +938,7 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO link to source code on the page
 //TODO give the bot "watching without audio/video" badge
 //TODO merge in the nickname bot
-//TODO twitch BTTV, FFZ, 7TV emotes
+//TODO twitch BTTV, FFZ, 7TV emotes and badges https://github.com/smilefx/tmi-emote-parse
 //TODO youtube emotes
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
@@ -920,3 +947,33 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO bot missing username when enabled and already has youtube_id ": connected to youtube chat"
 //TODO rethink the api paths to something like /api/channels/:channel/nicknames/:username etc.
 //TODO better UI for greetz threshold
+//TODO owncast chat, then remove it from obs scene
+//TODO delete twitch-nicknames-bot repo
+//TODO maybe dont save to carl history if replaced with <3
+//TODO make emotes slightly larger
+//TODO maybe make nickname text slightly smaller
+//TODO bot keeps reconnecting to twitch chat, maybe every youtube check?
+//TODO bot respond to alerts
+//TODO separate vip chat
+//TODO args to multichat command to change the link, and tell it in message
+//TODO public dashboard page
+//TODO keep track of version and if mismatch, send reload request
+//TODO auto reload if popout chat or dashboard page, otherwise ask to reload
+//TODO commands in the bot's chat to play videos on the 24/7 stream
+//TODO a way for super admin to call an api to get/set/delete anything in the database, for example delete last seen time
+//TODO add a greetz that is just the nickname + !, such as "DIVINITY!"
+
+/*twitch emote css:
+
+margin: -.5rem 0;
+position: relative;
+vertical-align: middle;
+border: none;
+max-width: 100%;
+font: inherit;
+padding: 0;
+box-sizing: border-box;
+
+overflow-wrap: anywhere;
+
+*/

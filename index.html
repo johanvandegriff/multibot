@@ -224,11 +224,11 @@
                 <h2>Nickname Ledger</h2>
                 <span v-if="channel === login || is_super_admin">
                     max nickname length: <input @keyup="set_max_nickname_length" @click="set_max_nickname_length"
-                        v-model="max_nickname_length" type="number">
+                        v-model="max_nickname_length" type="number"><br/>
                     greetz_threshold: <input @keyup="set_greetz_threshold" @click="set_greetz_threshold"
-                        v-model="greetz_threshold" type="number">
+                        v-model="greetz_threshold" type="number"><br/>
                     greetz_wb_threshold: <input @keyup="set_greetz_wb_threshold" @click="set_greetz_wb_threshold"
-                        v-model="greetz_wb_threshold" type="number">
+                        v-model="greetz_wb_threshold" type="number"><br/>
                 </span>
                 <span v-if="channels.includes(channel)">
                     <p v-if="channel === login || is_super_admin" style="padding: 5px">
