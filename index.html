@@ -102,7 +102,7 @@
         #messages {
             list-style-type: none;
             margin: 0;
-            padding: 0;
+            padding: 10px 0;
             height: 100%;
             height: calc(100vh - 100px);
             overflow-y: scroll;
@@ -308,7 +308,7 @@
                     <span v-if="msg.emotes">
                         <span v-for="{ type, value, raw } in this.parseEmotesInMessage(msg.emotes, msg.text)">
                             <span v-if="type === 'emote'">
-                                <img style="margin: -.25rem 0; height: 1.2rem;" :src="getEmoteAsUrl(value)" :alt="raw"
+                                <img style="margin: -.75rem 0; height: 2.2rem;" :src="getEmoteAsUrl(value)" :alt="raw"
                                     :title="raw" />
                             </span>
                             <span v-else>[[ value ]]</span>

@@ -1094,7 +1094,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO owncast chat, then remove it from obs scene
 //TODO delete twitch-nicknames-bot repo
 //TODO maybe dont save to carl history if replaced with <3
-//TODO make emotes slightly larger
 //TODO maybe make nickname text slightly smaller
 //TODO bot keeps reconnecting to twitch chat, maybe every youtube check?
 //TODO bot respond to alerts
