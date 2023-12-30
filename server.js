@@ -973,24 +973,31 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
         //Received: '{"id":"dZl60kLng","timestamp":"2022-02-27T23:37:24.330263605Z","type":"USER_JOINED","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]}}'
         //message:
         // Received: '{"body":"hello world","id":"En3e0kY7g","timestamp":"2022-02-27T23:37:28.502353829Z","type":"CHAT","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]},"visible":true}'
-
+        // Received: '{"body":"<p>Johan :tux:  liked that this stream went live.</p>\n","id":"uep4JgKIg","image":"https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png","link":"https://fosstodon.org/users/johanv","timestamp":"2023-12-30T16:29:25.371196748Z","title":"johanv@fosstodon.org","type":"FEDIVERSE_ENGAGEMENT_LIKE","user":{"displayName":"johanv.net"}}'
         //simplified: {"body": "hello world", "user": {"displayName": "priceless-roentgen"}}
         if ("body" in message && "user" in message && "displayName" in message.user) {
             const name = message.user.displayName;
-            const text = message.body;
-            const color = message.user.displayColor;
-            // let color1 = `hsla(${color}, 50%, 50%, var(--message-background-alpha))`;
-            let color2 = `hsla(${color}, 100%, 60%, 0.85)`;
-            if (color === undefined) {
-                // color1 = 'rgb(102, 126, 234)';
-                color2 = 'rgb(255, 255, 255)';
+            let text = message.body;
+            let emotes = undefined;
+            let color = `hsla(${message.user.displayColor}, 100%, 60%, 0.85)`;
+            if (message.user.displayColor === undefined) {
+                color = 'rgb(255, 255, 255)';
             }
-            // const messages = document.querySelector('#messages-container');
-            // messages.innerHTML += `<div style="padding: 2px 10px;"><span style="color: ${color2}; font-weight: bold;"><span>${name}</span></span><span style="color: white">: </span><span><span><span style="color: white">${text}</span></span></span></div>`
-            //messages.innerHTML += `<div style="background-color: ${color1};" class="message relative flex flex-row items-start p-3 m-3 rounded-lg shadow-s text-sm " title="Sent at 4:22:15 PM"><div class="message-content break-words w-full"><div style="color: ${color2};" class="message-author font-bold" title="awesome-lovelace first joined 4:22:10 PM">  ${name}</div><div class="message-text text-gray-300 font-normal overflow-y-hidden pt-2">${text}</div></div></div>`;
-            // messages.scrollTo(0, messages.scrollHeight);
-            console.log(color2, name, text);
-            send_chat(channel, name, undefined, color2, text, undefined);
+            if (message.type !== 'CHAT') {
+                text = text.replace('<p>', '').replace('</p>', '').replace('\n', ' ');
+            }
+            if (message.type === 'FEDIVERSE_ENGAGEMENT_LIKE') {
+                // text += '(' + message.title + ' ';
+                // const start = text.length;
+                // text += message.image
+                // const end = text.length - 1;
+                // text += ' )';
+                text = `${message.title} ${message.image} ${text}`
+                const start = text.indexOf(message.image);
+                const end = start + message.image.length - 1;
+                emotes = { [message.image]: [`${start}-${end}`] };
+            }
+            send_chat(channel, name, undefined, color, text, emotes);
         }
     }
 
@@ -1037,6 +1044,7 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
 
                     //multiple json objects can be sent in the same message, separated by newlines
                     message.utf8Data.split("\n").forEach(text => onMessageReceived(JSON.parse(text)));
+                    // onMessageReceived({ "body": "<p>Johan :tux:  liked that this stream went live.</p>\n", "id": "uep4JgKIg", "image": "https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png", "link": "https://fosstodon.org/users/johanv", "timestamp": "2023-12-30T16:29:25.371196748Z", "title": "johanv@fosstodon.org", "type": "FEDIVERSE_ENGAGEMENT_LIKE", "user": { "displayName": "johanv.net" } });
                 }
             });
 
@@ -1104,18 +1112,5 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO auto reload if popout chat or dashboard page, otherwise ask to reload
 //TODO commands in the bot's chat to play videos on the 24/7 stream
 //TODO a way for super admin to call an api to get/set/delete anything in the database, for example delete last seen time
-
-/*twitch emote css:
-
-margin: -.5rem 0;
-position: relative;
-vertical-align: middle;
-border: none;
-max-width: 100%;
-font: inherit;
-padding: 0;
-box-sizing: border-box;
-
-overflow-wrap: anywhere;
-
-*/
+//TODO twitch badges
+//TODO twitch /me

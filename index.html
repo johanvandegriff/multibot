@@ -102,9 +102,9 @@
         #messages {
             list-style-type: none;
             margin: 0;
-            padding: 10px 0;
+            padding: 2px 0;
             height: 100%;
-            height: calc(100vh - 100px);
+            height: calc(100vh - 104px);
             overflow-y: scroll;
             word-wrap: break-word;
             background: #18181B;
@@ -306,9 +306,9 @@
                     </span>
                     <span>: </span>
                     <span v-if="msg.emotes">
-                        <span v-for="{ type, value, raw } in this.parseEmotesInMessage(msg.emotes, msg.text)">
+                        <span v-for="{ type, value, raw } in myParseEmotesInMessage(msg.emotes, msg.text)">
                             <span v-if="type === 'emote'">
-                                <img style="margin: -.75rem 0; height: 2.2rem;" :src="getEmoteAsUrl(value)" :alt="raw"
+                                <img style="margin: -.75rem 0; height: 2.2rem;" :src="myGetEmoteAsUrl(value)" :alt="raw"
                                     :title="raw" />
                             </span>
                             <span v-else>[[ value ]]</span>
@@ -367,8 +367,6 @@
                     owncast_url: '',
                     fwd_cmds_yt_twitch: [],
                     new_cmd: '',
-                    parseEmotesInMessage: parseEmotesInMessage,
-                    getEmoteAsUrl: getEmoteAsUrl,
                     is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
                     bgcolor: '{{bgcolor}}',
                     max_nickname_length: undefined,
@@ -646,6 +644,15 @@ config.webSocketVersion: ${json.listener?.config?.webSocketVersion}`);
                     fetch('/custom_greetz?channel=' + encodeURIComponent(this.channel))
                         .then(res => res.json())
                         .then(json => this.custom_greetz = json);
+                },
+                myGetEmoteAsUrl(id) {
+                    if (id.startsWith('https://')) {
+                        return id;
+                    }
+                    return getEmoteAsUrl(id);
+                },
+                myParseEmotesInMessage(emotes, text) {
+                    return parseEmotesInMessage(emotes, text);
                 },
             },
             mounted() {
