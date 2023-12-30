@@ -193,15 +193,25 @@
                         channel ([[ channel ]]). <button style="color: #d22; font-weight: bold"
                             @click="set_enabled(true)">ENABLE</button>
                     </p>
-                    enter youtube channel URL or ID: <input type="text" v-model="youtube_input" />
-                    <button @click="find_youtube_id">find channel</button>
-                    <span v-if="youtube_id && youtube_id.length > 0">(youtube channel connected: <a
-                            :href="'https://www.youtube.com/channel/' + youtube_id">[[ youtube_id ]]</a>)
-                        <button @click="set_youtube_id('')">disconnect</button>
-                    </span>
-                    <span v-else>(no youtube channel connected)</span>
-                    <button @click="check_youtube_status">check youtube chat status</button>
-
+                    <p>
+                        enter youtube channel URL or ID: <input type="text" v-model="youtube_input" />
+                        <button @click="find_youtube_id">find channel</button>
+                        <span v-if="youtube_id && youtube_id.length > 0">(youtube channel connected: <a
+                                :href="'https://www.youtube.com/channel/' + youtube_id">[[ youtube_id ]]</a>)
+                            <button @click="set_youtube_id('')">disconnect</button>
+                        </span>
+                        <span v-else>(no youtube channel connected)</span>
+                        <button @click="check_youtube_status">check youtube chat status</button>
+                    </p>
+                    <p>
+                        enter owncast URL: <input type="text" v-model="owncast_input" />
+                        <button @click="owncast_connect">connect</button>
+                        <span v-if="owncast_url && owncast_url.length > 0">(owncast connected:
+                            <a :href="'https://' + owncast_url">[[ owncast_url ]]</a>)
+                            <button @click="owncast_disconnect">disconnect</button>
+                        </span>
+                        <button @click="check_owncast_status">check owncast chat status</button>
+                    </p>
                     <h2>Forward Commands from Youtube to Twitch</h2>
                     <ul>
                         <li v-for="cmd, i in fwd_cmds_yt_twitch"><input type="text" v-model="cmd" />
@@ -224,11 +234,11 @@
                 <h2>Nickname Ledger</h2>
                 <span v-if="channel === login || is_super_admin">
                     max nickname length: <input @keyup="set_max_nickname_length" @click="set_max_nickname_length"
-                        v-model="max_nickname_length" type="number"><br/>
+                        v-model="max_nickname_length" type="number"><br />
                     greetz_threshold: <input @keyup="set_greetz_threshold" @click="set_greetz_threshold"
-                        v-model="greetz_threshold" type="number"><br/>
+                        v-model="greetz_threshold" type="number"><br />
                     greetz_wb_threshold: <input @keyup="set_greetz_wb_threshold" @click="set_greetz_wb_threshold"
-                        v-model="greetz_wb_threshold" type="number"><br/>
+                        v-model="greetz_wb_threshold" type="number"><br />
                 </span>
                 <span v-if="channels.includes(channel)">
                     <p v-if="channel === login || is_super_admin" style="padding: 5px">
@@ -353,6 +363,8 @@
                     is_super_admin: '{{user.is_super_admin}}' === 'true',
                     youtube_input: '',
                     youtube_id: '',
+                    owncast_input: '',
+                    owncast_url: '',
                     fwd_cmds_yt_twitch: [],
                     new_cmd: '',
                     parseEmotesInMessage: parseEmotesInMessage,
@@ -558,6 +570,32 @@
                         this.youtube_id = id;
                     }
                 },
+                get_owncast_url() {
+                    fetch('/owncast_url?channel=' + encodeURIComponent(this.channel))
+                        .then(res => res.text())
+                        .then(json => this.owncast_url = json);
+                },
+                async set_owncast_url(url) {
+                    if (url.startsWith('http://')) {
+                        url = url.replace('http://', '');
+                    }
+                    if (url.startsWith('https://')) {
+                        url = url.replace('https://', '');
+                    }
+                    if (url.endsWith('/')) {
+                        url = url.substr(0, url.length - 1);
+                    }
+                    const res = await fetch_post('/owncast_url', { channel: this.channel, owncast_url: url });
+                    if (res.status === 200) {
+                        this.owncast_url = url;
+                    }
+                },
+                owncast_connect() {
+                    this.set_owncast_url(this.owncast_input);
+                },
+                owncast_disconnect() {
+                    this.set_owncast_url('');
+                },
                 send_cmds() {
                     fetch_post('/fwd_cmds_yt_twitch', { channel: this.channel, fwd_cmds_yt_twitch: this.fwd_cmds_yt_twitch });
                 },
@@ -573,6 +611,17 @@ channelName: ${json.listener?.channelName}
 videoId: ${json.listener?.videoId}
 title: ${json.listener?.title}
 isLive: ${json.listener?.isLive}`);
+                        });
+                },
+                check_owncast_status() {
+                    fetch('/owncast_status?channel=' + this.channel)
+                        .then(res => res.json())
+                        .then(json => {
+                            console.log('owncast_status', json); //TODO
+                            alert(`Owncast Status:
+owncast_url: ${json.owncast_url}
+socket.servername: ${json.listener?.socket?.servername}
+config.webSocketVersion: ${json.listener?.config?.webSocketVersion}`);
                         });
                 },
                 connect_to_socket_chat() {
@@ -636,6 +685,7 @@ isLive: ${json.listener?.isLive}`);
                             .then(res => res.json())
                             .then(json => this.nicknames = json);
                         this.get_youtube_id();
+                        this.get_owncast_url();
                         this.connect_to_socket_chat();
                         fetch('/fwd_cmds_yt_twitch?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())

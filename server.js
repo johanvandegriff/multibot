@@ -22,6 +22,7 @@ const DEFAULT_VIEWER_PROPERTIES = {
 const DEFAULT_BOT_NICKNAME = '🤖';
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
 const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
+const OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 const GREETZ_DELAY_FOR_COMMAND = 2 * 1000; //wait 2 seconds to greet when the user ran a command
 const TWITCH_MESSAGE_DELAY = 500; //time to wait between twitch chats for both to go thru
 const ENABLED_COOLDOWN = 5 * 1000; //only let users enable/disable their channel every 5 seconds
@@ -46,6 +47,7 @@ const GREETZ = [
     'hows it going #',
     'hey whats new with you #',
     'how have you been #',
+    '#!',
 ];
 
 const GREETZ_ALSO = [
@@ -83,9 +85,10 @@ const GREETZ_WELCOME_BACK_ALSO = [
 
 const http = require('http');
 const https = require('https');
+const WebSocketClient = require('websocket').client;
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
-const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests") //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
+const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests"); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
 const { Masterchat, stringify } = require("masterchat"); //youtube chat https://github.com/sigvt/masterchat
 const fs = require('fs');
 const express = require('express');
@@ -349,6 +352,20 @@ app.post('/youtube_id', jsonParser, channel_auth_middleware, validate_middleware
     }
     res.end();
 });
+app.get('/youtube_status', async (req, res) => { res.send(youtube_chats[req.query.channel] || {}) });
+
+app.get('/owncast_url', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'owncast_url')) });
+app.post('/owncast_url', jsonParser, channel_auth_middleware, validate_middleware('owncast_url', 'string'), async (req, res) => {
+    const channel = req.body.channel;
+    const owncast_url = req.body.owncast_url;
+    const old_owncast_url = await getChannelProperty(channel, 'owncast_url');
+    if (old_owncast_url !== owncast_url) {
+        await setChannelProperty(channel, 'owncast_url', owncast_url);
+        connect_to_owncast(channel);
+    }
+    res.end();
+});
+app.get('/owncast_status', async (req, res) => { res.send(owncast_chats[req.query.channel] || {}) });
 
 app.get('/find_youtube_id', async (req, res) => {
     var channel = req.query.channel; //could be a url or a handle
@@ -384,12 +401,6 @@ app.get('/find_youtube_id', async (req, res) => {
         res.status(400).send('invalid');
     }
 });
-
-function getYoutubeStatus(channel) {
-    return youtube_chats[channel] || {};
-}
-app.get('/youtube_status', async (req, res) => { res.send(getYoutubeStatus(req.query.channel)) });
-
 
 // The first argument is the database filename. If no extension is used, '.json' is assumed and automatically added.
 // The second argument is used to tell the DB to save after each push
@@ -712,7 +723,7 @@ async function handleCommand(target, context, msg, username) {
         const used_nicknames = Object.values(await getViewerProperty(channel, 'nickname', undefined));
         console.log(used_nicknames);
         const remaining_random_nicknames = JSON.parse(JSON.stringify(RANDOM_NICKNAMES)).filter(nickname => !used_nicknames.includes(nickname));
-        if(remaining_random_nicknames.length > 0) {
+        if (remaining_random_nicknames.length > 0) {
             const nickname = random_choice(remaining_random_nicknames);
             await setViewerProperty(channel, 'nickname', username, nickname);
             send_nickname(channel, username, nickname);
@@ -827,7 +838,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
     disconnect_from_youtube(channel);
     const youtube_id = await getChannelProperty(channel, 'youtube_id');
     if (!youtube_id) {
-        console.error('[youtube] no channel id associated with twitch channel ' + channel);
+        console.error('[youtube] no youtube channel id associated with twitch channel ' + channel);
         return 'no id';
     }
 
@@ -917,7 +928,7 @@ async function connect_to_all_youtubes() {
     console.log('[youtube] attempting to connect to all youtube chats');
     (await getEnabledChannels()).forEach(async channel => {
         if (youtube_chats[channel]) {
-            console.log('[youtube] already connected to youtube livestream for twitch channel ' + channel);
+            console.log('[youtube] already connected to youtube live chat for twitch channel ' + channel);
         } else {
             connect_to_youtube(channel);
         }
@@ -926,6 +937,139 @@ async function connect_to_all_youtubes() {
 
 //periodically attempt to connect to youtube chats
 setInterval(connect_to_all_youtubes, YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL);
+
+
+//owncast chat stuff
+const owncast_chats = {
+    // 'jjvantheman': { 
+    //     owncast_url: 'johanv.net',
+    //     listener: ???,
+    // }
+};
+
+async function disconnect_from_owncast(channel) { //channel is a twitch channel
+    if (owncast_chats[channel]) {
+        owncast_chats[channel].listener.close();
+        delete owncast_chats[channel];
+    }
+}
+
+async function connect_to_owncast(channel) { //channel is a twitch channel
+    disconnect_from_owncast(channel);
+    const owncast_url = await getChannelProperty(channel, 'owncast_url');
+    if (!owncast_url) {
+        console.error('[owncast] no owncast url associated with twitch channel ' + channel);
+        return 'no url';
+    }
+
+    const onErrorOrClose = () => {
+        disconnect_from_owncast(channel);
+    }
+
+    const onMessageReceived = (message) => {
+        //message received
+        console.log("[owncast] Received: '" + JSON.stringify(message) + "'");
+        //user joins:
+        //Received: '{"id":"dZl60kLng","timestamp":"2022-02-27T23:37:24.330263605Z","type":"USER_JOINED","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]}}'
+        //message:
+        // Received: '{"body":"hello world","id":"En3e0kY7g","timestamp":"2022-02-27T23:37:28.502353829Z","type":"CHAT","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]},"visible":true}'
+
+        //simplified: {"body": "hello world", "user": {"displayName": "priceless-roentgen"}}
+        if ("body" in message && "user" in message && "displayName" in message.user) {
+            const name = message.user.displayName;
+            const text = message.body;
+            const color = message.user.displayColor;
+            // let color1 = `hsla(${color}, 50%, 50%, var(--message-background-alpha))`;
+            let color2 = `hsla(${color}, 100%, 60%, 0.85)`;
+            if (color === undefined) {
+                // color1 = 'rgb(102, 126, 234)';
+                color2 = 'rgb(255, 255, 255)';
+            }
+            // const messages = document.querySelector('#messages-container');
+            // messages.innerHTML += `<div style="padding: 2px 10px;"><span style="color: ${color2}; font-weight: bold;"><span>${name}</span></span><span style="color: white">: </span><span><span><span style="color: white">${text}</span></span></span></div>`
+            //messages.innerHTML += `<div style="background-color: ${color1};" class="message relative flex flex-row items-start p-3 m-3 rounded-lg shadow-s text-sm " title="Sent at 4:22:15 PM"><div class="message-content break-words w-full"><div style="color: ${color2};" class="message-author font-bold" title="awesome-lovelace first joined 4:22:10 PM">  ${name}</div><div class="message-text text-gray-300 font-normal overflow-y-hidden pt-2">${text}</div></div></div>`;
+            // messages.scrollTo(0, messages.scrollHeight);
+            console.log(color2, name, text);
+            send_chat(channel, name, undefined, color2, text, undefined);
+        }
+    }
+
+    try {
+        // process.env.TWITCH_BOT_USERNAME DEFAULT_BOT_NICKNAME
+
+        // const liveVideoId = await getLiveVideoId(youtube_id);
+        const res = await fetch('https://' + owncast_url + '/api/chat/register', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ "displayName": DEFAULT_BOT_NICKNAME }),
+        });
+
+        const res_json = await res.json();
+
+        console.log('[owncast] Status:', res.status);
+        console.log('[owncast] JSON:', res_json);
+
+        var token = res_json.accessToken;
+
+        var client = new WebSocketClient();
+
+        client.on('connectFailed', function (error) {
+            console.log('[owncast] Connect Error: ' + error.toString());
+            onErrorOrClose();
+        });
+
+        client.on('connect', function (connection) {
+            console.log('[owncast] WebSocket Client Connected');
+            connection.on('error', function (error) {
+                console.log("[owncast] Connection Error: " + error.toString());
+                onErrorOrClose();
+            });
+            connection.on('close', function () {
+                console.log('[owncast] Connection Closed');
+                onErrorOrClose();
+            });
+            connection.on('message', function (message) {
+                if (message.type === 'utf8') {
+                    // console.log("Received: '" + message.utf8Data + "'");
+
+                    //multiple json objects can be sent in the same message, separated by newlines
+                    message.utf8Data.split("\n").forEach(text => onMessageReceived(JSON.parse(text)));
+                }
+            });
+
+            owncast_chats[channel] = {
+                owncast_url: owncast_url,
+                listener: connection
+            };
+            console.log(`[owncast] connected to owncast chat: https://${owncast_url}`);
+            //delay the message a bit to allow the disconnect message to come thru first
+            setTimeout(() => twitch_try_say(channel, `connected to owncast chat: https://${owncast_url}`), TWITCH_MESSAGE_DELAY);
+        });
+
+        client.connect('wss://' + owncast_url + '/ws?accessToken=' + token);
+    } catch (err) {
+        console.error('[owncast] error: ' + err);
+        onErrorOrClose();
+    }
+    return '';
+}
+
+async function connect_to_all_owncasts() {
+    console.log('[owncast] attempting to connect to all owncast chats');
+    (await getEnabledChannels()).forEach(async channel => {
+        if (owncast_chats[channel]) {
+            console.log('[owncast] already connected to owncast live chat for twitch channel ' + channel);
+        } else {
+            connect_to_owncast(channel);
+        }
+    });
+}
+
+//periodically attempt to connect to owncast chats
+setInterval(connect_to_all_owncasts, OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL);
 
 
 //start the http server
@@ -961,7 +1105,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO auto reload if popout chat or dashboard page, otherwise ask to reload
 //TODO commands in the bot's chat to play videos on the 24/7 stream
 //TODO a way for super admin to call an api to get/set/delete anything in the database, for example delete last seen time
-//TODO add a greetz that is just the nickname + !, such as "DIVINITY!"
 
 /*twitch emote css:
 
