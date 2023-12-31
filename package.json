@@ -1,7 +1,7 @@
 {
     "name": "multistream-bot",
     "version": "0.0.1",
-    "description": "aggregate live chat from twitch, youtube, etc. and forward commands between as needed. https://coolbot.jjv.sh",
+    "description": "aggregate live chat from twitch, youtube, etc. and forward commands between as needed. https://botbot.jjv.sh",
     "license": "AGPL-3.0-or-later",
     "repository": {
         "type": "git",
