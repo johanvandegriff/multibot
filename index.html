@@ -212,6 +212,10 @@
                         </span>
                         <button @click="check_owncast_status">check owncast chat status</button>
                     </p>
+                    <p>
+                        <button @click="check_emotes_status">check 3rd party emotes status</button>
+                        <button @click="clear_chat">clear chat</button>
+                    </p>
                     <h2>Forward Commands from Youtube to Twitch</h2>
                     <ul>
                         <li v-for="cmd, i in fwd_cmds_yt_twitch"><input type="text" v-model="cmd" />
@@ -621,6 +625,18 @@ owncast_url: ${json.owncast_url}
 socket.servername: ${json.listener?.socket?.servername}
 config.webSocketVersion: ${json.listener?.config?.webSocketVersion}`);
                         });
+                },
+                check_emotes_status() {
+                    fetch('/emotes_status?channel=' + this.channel)
+                        .then(res => res.json())
+                        .then(json => {
+                            console.log('emotes_status', json); //TODO
+                            alert(`Emotes Status:
+${JSON.stringify(json, undefined, 2) }`);
+                        });
+                },
+                clear_chat() {
+                    fetch_post('/clear_chat', { channel: this.channel });
                 },
                 connect_to_socket_chat() {
                     this.socket = io();

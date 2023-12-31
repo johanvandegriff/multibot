@@ -23,6 +23,9 @@ const DEFAULT_BOT_NICKNAME = '🤖';
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
 const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 const OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
+const EMOTE_STARTUP_DELAY = 2 * 60 * 1000; //2 minutes
+const EMOTE_CACHE_TIME = 1 * 60 * 60 * 1000; //1 hour
+const EMOTE_RETRY_TIME = 30 * 1000; //30 seconds
 const GREETZ_DELAY_FOR_COMMAND = 2 * 1000; //wait 2 seconds to greet when the user ran a command
 const TWITCH_MESSAGE_DELAY = 500; //time to wait between twitch chats for both to go thru
 const ENABLED_COOLDOWN = 5 * 1000; //only let users enable/disable their channel every 5 seconds
@@ -88,6 +91,7 @@ const https = require('https');
 const WebSocketClient = require('websocket').client;
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
+const { EmoteFetcher } = require('@mkody/twitch-emoticons');
 const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests"); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
 const { Masterchat, stringify } = require("masterchat"); //youtube chat https://github.com/sigvt/masterchat
 const fs = require('fs');
@@ -366,6 +370,17 @@ app.post('/owncast_url', jsonParser, channel_auth_middleware, validate_middlewar
     res.end();
 });
 app.get('/owncast_status', async (req, res) => { res.send(owncast_chats[req.query.channel] || {}) });
+app.get('/emotes_status', async (req, res) => {
+    const emote_cache_copy = JSON.parse(JSON.stringify(emote_cache[req.query.channel] || {}));
+    delete emote_cache_copy.emotes;
+    res.send(emote_cache_copy);
+});
+app.post('/clear_chat', jsonParser, channel_auth_middleware, async (req, res) => {
+    const channel = req.body.channel;
+    clear_chat(channel);
+    update_emote_cache(channel);
+    res.end();
+});
 
 app.get('/find_youtube_id', async (req, res) => {
     var channel = req.query.channel; //could be a url or a handle
@@ -492,6 +507,15 @@ io.on('connection', (socket) => {
 });
 
 function send_chat(channel, username, nickname, color, text, emotes) {
+    if (!emotes) {
+        emotes = {};
+    }
+    try {
+        const emotes_3rd_party = find_3rd_party_emotes(channel, text);
+        emotes = Object.assign(emotes_3rd_party, emotes); //put the original emotes last so they don't get overwritten
+    } catch (err) {
+        console.error('[emotes] error finding 3rd party emotes:', channel, text, err);
+    }
     const iomsg = { username: username, nickname: nickname, color: color, emotes: emotes, text: text };
     if (!chat_history[channel]) {
         chat_history[channel] = [];
@@ -518,6 +542,133 @@ function send_global_event(msg) {
     console.log(`[socket.io] SEND GLOBAL EVENT`, msg);
     io.emit('global_event', msg);
 }
+
+//3rd party emotes
+//if any of this fails, the send_chat code will fall back to just twitch emotes
+// https://github.com/mkody/twitch-emoticons
+const emote_cache = {
+    // 'jjvantheman': {
+    //     emotes: {
+    //         catJAM: 'https://cdn.7tv.app/emote/60ae7316f7c927fad14e6ca2/1x.webp',
+    //     },
+    //     lastUpdated: 123456, //or undefined if never
+    //     startedUpdating: 123456, //or undefined if done
+    // }
+}
+
+async function update_emote_cache(channel) {
+    console.log('[emotes] updating emote cache for channel', channel);
+    if (!emote_cache[channel]) {
+        emote_cache[channel] = {}
+    }
+    emote_cache[channel].startedUpdating = + new Date();
+    const fetcher = new EmoteFetcher(process.env.TWITCH_CLIENT_ID, process.env.TWITCH_SECRET);
+
+    try {
+        //get the global emotes for each service - required, so abort if any fail
+        await Promise.all([
+            // fetcher.fetchTwitchEmotes(), // Twitch global //we will let twitch handle these
+            fetcher.fetchBTTVEmotes(), // BTTV global
+            fetcher.fetchSevenTVEmotes(), // 7TV global
+            fetcher.fetchFFZEmotes(), // FFZ global
+        ]);
+        const connections = {
+            // global_twitch: true,
+            global_bttv: true,
+            global_7tv: true,
+            global_ffz: true,
+            channel_bttv: false,
+            channel_7tv: false,
+            channel_ffz: false,
+        }
+
+        //get the channel emotes for each service - optional, so continue if any fail
+        try {
+            const helixUser = await fetcher.apiClient.users.getUserByName(channel);
+            console.log('[emotes] helixUser:', helixUser, channel);
+            const channelId = parseInt(helixUser.id);
+            console.log('[emotes] channelId', channelId, channel);
+            // try {
+            //     await fetcher.fetchTwitchEmotes(channelId); // Twitch channel
+            //     connections.channel_twitch = true;
+            // } catch (err) {
+            //     connections.channel_twitch = false;
+            //     console.error('[emotes] twitch channel emotes error:', channel, err);
+            // }
+            try {
+                await fetcher.fetchBTTVEmotes(channelId); // BTTV channel
+                connections.channel_bttv = true;
+            } catch (err) {
+                console.error('[emotes] bttv channel emotes error:', channel, JSON.stringify(err));
+            }
+            try {
+                await fetcher.fetchSevenTVEmotes(channelId); // 7TV channel
+                connections.channel_7tv = true;
+            } catch (err) {
+                console.error('[emotes] 7tv channel emotes error:', channel, JSON.stringify(err));
+            }
+            try {
+                await fetcher.fetchFFZEmotes(channelId); // FFZ channel
+                connections.channel_ffz = true;
+            } catch (err) {
+                console.error('[emotes] ffz channel emotes error:', channel, JSON.stringify(err));
+            }
+        } catch (err) {
+            console.error('[emotes] error getting channel emotes:', channel, err);
+        }
+
+        const now = + new Date();
+        const emote_lookup = {};
+        fetcher.emotes.forEach(emote => { emote_lookup[emote.code] = emote.toLink() });
+        emote_cache[channel] = {
+            emotes: emote_lookup,
+            lastUpdated: now,
+            connections: connections,
+        };
+        // console.log(emote_cache);
+        console.log('[emotes] done updating emote cache for channel:', channel);
+    } catch (err) {
+        console.error('[emotes] error:', channel, err);
+    }
+}
+
+async function update_emote_cache_if_needed(channel) {
+    const now = + new Date();
+    const lastUpdated = emote_cache[channel]?.lastUpdated || 0;
+    const startedUpdating = emote_cache[channel]?.startedUpdating || 0;
+    console.log('[emotes] emote cache status:', channel, now, lastUpdated, EMOTE_CACHE_TIME, startedUpdating, EMOTE_RETRY_TIME);
+    if (now > lastUpdated + EMOTE_CACHE_TIME && now > startedUpdating + EMOTE_RETRY_TIME) {
+        await update_emote_cache(channel);
+    }
+}
+
+function find_3rd_party_emotes(channel, msg) {
+    update_emote_cache_if_needed(channel); //this update will run in the background and will not help for this time
+    const emotes = {};
+    let pos = 0;
+    const emote_lookup = emote_cache[channel]?.emotes || emote_cache[undefined]?.emotes || {}; //emote_cache[undefined] is the global cache
+    msg.split(' ').forEach(word => {
+        // console.log(word, pos);
+        if (emote_lookup[word]) {
+            if (!emotes[emote_lookup[word]]) {
+                emotes[emote_lookup[word]] = [];
+            }
+            const start = pos;
+            const end = pos + word.length - 1;
+            emotes[emote_lookup[word]].push(`${start}-${end}`);
+        }
+        pos += word.length + 1;
+    });
+    return emotes;
+}
+
+update_emote_cache(undefined); //update the global emote cache
+
+//after running for a bit, update all the emote caches. this will prevent spamming the API during testing
+setTimeout(async () => {
+    await update_emote_cache_if_needed(undefined);
+    (await getEnabledChannels()).forEach(async channel => await update_emote_cache_if_needed(channel));
+}, EMOTE_STARTUP_DELAY);
 
 //twitch chat stuff
 var tmi_client = undefined;
@@ -700,6 +851,7 @@ async function handleCommand(target, context, msg, username) {
     } else if (command === '!clear') {
         if (has_permission(context)) {
             clear_chat(channel);
+            update_emote_cache(channel);
         }
     } else if (command === '!nickname') { //retrieve the nickname of the user who typed it
         twitch_try_say(target, await getNicknameMsg(channel, username));
@@ -1090,7 +1242,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO link to source code on the page
 //TODO give the bot "watching without audio/video" badge
 //TODO merge in the nickname bot
-//TODO twitch BTTV, FFZ, 7TV emotes and badges https://github.com/smilefx/tmi-emote-parse
 //TODO youtube emotes
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
