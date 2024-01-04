@@ -1,6 +1,7 @@
 const SECRETS_FILE = '/srv/secret.env';
 const JSON_DB_FILE = '/srv/data.json';
 
+const fs = require('fs');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
 
@@ -74,9 +75,60 @@ function better_typeof(data) {
 async function clearBucket() {
     const all = await bdb.find();
     console.log('old bucket data:', all);
-    all.forEach(item => bdb.delete(item));
+    for (const item of all) {
+        await bdb.delete(item);
+    }
 }
 
-// clearBucket(); //warning: will delete everything in the bucket
-// jsonToBucket(); //warning: will overwrite what is already in the bucket
-// bucketToJson(); //warning: will overwrite what is already in the json file
+async function clearJson() {
+    fs.writeFileSync(JSON_DB_FILE, JSON.stringify({}));
+}
+
+(async () => {
+    const start = + new Date();
+
+    // const all = await bdb.find();
+    // console.log('find', all);
+    // // all.forEach(item => bdb.delete(item));
+
+    // await bdb.set('test/123.txt', 'abcd');
+    // console.log(await bdb.get('test/1234.txt'));
+    // await bdb.delete('test/123.txt');
+    // console.log(await bdb.get('test/123.txt', 'geese'));
+
+    // console.log('find', await bdb.find());
+    // console.log('list', await bdb.list('channels', false));
+    // console.log('list', await bdb.list('channels/jjvanvan', false));
+    // console.log('list', await bdb.list('channels/jjvanvan', true));
+    // console.log('list', await bdb.list('channels/jjvanvan/nickname', true));
+
+
+    // console.log('find', await bdb.find('channels/jjvanvan'));
+    // console.log('list', await bdb.list('channels/jjvanvan'));
+    // console.log('list', await bdb.list('channels/jjvanvan/nickname'));
+    // console.log(await bdb.get('channels/jjvanvan/enabled'));
+    // console.log(await bdb.get('channels/jjvanvan/nickname/JJvanTheMan'));
+
+    // // NOTE: find_with_values is very slow and gets slower with more data in the bucket
+    // console.log(await bdb.find_with_values());
+
+    // // NOTE: list_with_values is somewhat slow and gets slower with more data in the folder being listed
+    // console.log(await bdb.list_with_values());
+    // console.log(await bdb.list_with_values('channels'));
+    // console.log(await bdb.list_with_values('channels/jjvanvan'));
+    // console.log(await bdb.list_with_values('channels/jjvanvan/nickname'));
+
+    // let val = [1,2,3];
+    // await bdb.set('test/123.txt', val);
+    // console.log(await bdb.get('test/123.txt'));
+    // await bdb.delete('test/123.txt');
+    // console.log(val);
+
+    // await clearBucket(); //warning: will delete everything in the bucket
+    // await jsonToBucket(); //warning: will overwrite what is already in the bucket
+
+    await clearJson(); //warning: will delete everything in the json file
+    await bucketToJson(); //warning: will overwrite what is already in the json file
+
+    console.log(+ new Date() - start);
+})();
