@@ -8,6 +8,7 @@
         "url": "git://codeberg.org/johanvandegriff/multistream-bot.git"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.484.0",
         "@mkody/twitch-emoticons": "^2.8.4",
         "@types/node": "^14.11.8",
         "body-parser": "^1.20.2",
