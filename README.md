@@ -31,8 +31,11 @@ This code is open source (AGPL-3.0 license), so you don't have to use my server 
 
 You will need:
 * __a domain name__: I use namesilo but any domain name service will work fine.
-* __a server with a public IP address and docker installed__: I use [digitalocean](https://m.do.co/c/f300a2838d1d) but you can use any cloud provider, or even host it at your house/apartment and port forward thru your router. Make sure to log into your domain name service and point the domain or subdomain at the public IP address of the server with a DNS "A" record.
+* __a server with a public IP address and docker installed__: I use [DigitalOcean](https://m.do.co/c/f300a2838d1d) but you can use any cloud provider, or even host it at your house/apartment and port forward thru your router. Make sure to log into your domain name service and point the domain or subdomain at the public IP address of the server with a DNS "A" record.
+* __an S3 compatible storage bucket__: I use DigitalOcean's [spaces](https://www.digitalocean.com/products/spaces) but you can use any S3 compatible product.
 * __a twitch account for the bot__: I recommend creating a new account for the bot, but you can use your own twitch account if you want.
+
+Make sure you have all these before continuing.
 
 ### Generate Credentials
 Log in with the bot's twitch account, then visit this page to generate an oauth token: https://twitchapps.com/tmi/
@@ -40,6 +43,8 @@ Log in with the bot's twitch account, then visit this page to generate an oauth 
 Also visit this page to generate app credentials: https://dev.twitch.tv/console/apps
 
 The callback URL will depend on your domain name, for example `https://your-domain-name.com/auth/twitch/callback`
+
+Go to https://cloud.digitalocean.com/account/api/spaces or the equivalent for whatever S3 provider you chose and click `Generate New Key`, put whatever name you want, for example `my stream bot key`. You will need both the access key and the secret key.
 
 On your server, make a directory for the files to be kept:
 ```bash
@@ -61,9 +66,14 @@ TWITCH_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWITCH_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 SESSION_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 BASE_URL=https://your-domain-name.com
+BUCKET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxx
+BUCKET_SECRET_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+BUCKET_ENDPOINT=https://nyc3.digitaloceanspaces.com
+BUCKET_NAME=yourbucket
+BUCKET_FOLDER=prod
 ```
 
-Note: make sure you DO NOT share the secrets with anyone, or they will be able to log in as the bot and do whatever they want as if they owned that twitch account. If you think the secrets have been leaked, go back to the 2 different pages where you generated them in the previous step, and regenerate new credentials.
+Note: make sure you DO NOT share the secrets with anyone, or they will be able to log in as the bot and do whatever they want as if they owned that twitch account. If you think the secrets have been leaked, go back to the 3 different pages where you generated them in the previous step, and regenerate new credentials.
 
 For `TWITCH_SUPER_ADMIN_USERNAME`, put your twitch account, in all lowercase. Multiple people can log in with twitch once it's deployed, but only this account will have the highest level of admin when you log in. You could also put the bot's twitch account for this, but it could be less convenient since you probably won't stay logged in as the bot long term.
 
@@ -76,6 +86,16 @@ For `TWITCH_CLIENT_ID` and `TWITCH_SECRET`, enter the Client ID and Client Secre
 For `SESSION_SECRET`, this just needs to be random, nothing specific, so type a long string of numbers and letters on your keyboard.
 
 Again, `BASE_URL` will depend on your domain name, for example `https://your-domain-name.com` and make sure there is NO slash at the end.
+
+For `BUCKET_ACCESS_KEY`, put the access key you got from digitalocean.
+
+For `BUCKET_SECRET_KEY`, put the secret key you got from digitalocean.
+
+For `BUCKET_ENDPOINT`, put `https://nyc3.digitaloceanspaces.com` if you used digitalocean with the default region, otherwise adjust it to your region/provider.
+
+For `BUCKET_NAME`, put the name you used when you created the bucket (not the bucket access key).
+
+For `BUCKET_FOLDER`, put `prod`, but this can really be whatever, it's just the folder inside the bucket you want the app to put all its data in.
 
 Make sure to save with Ctrl-S and exit nano with Ctrl-X.
 

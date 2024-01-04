@@ -79,6 +79,7 @@
         .nickname {
             font-family: 'Courier New', Courier, monospace;
             font-weight: bold;
+            font-size: smaller;
         }
 
         .equals {
@@ -237,12 +238,15 @@
             <span v-if="channel && channels">
                 <h2>Nickname Ledger</h2>
                 <span v-if="channel === login || is_super_admin">
-                    max nickname length: <input @keyup="set_max_nickname_length" @click="set_max_nickname_length"
-                        v-model="max_nickname_length" type="number"><br />
-                    greetz_threshold: <input @keyup="set_greetz_threshold" @click="set_greetz_threshold"
-                        v-model="greetz_threshold" type="number"><br />
-                    greetz_wb_threshold: <input @keyup="set_greetz_wb_threshold" @click="set_greetz_wb_threshold"
-                        v-model="greetz_wb_threshold" type="number"><br />
+                    max nickname length: <input v-model="max_nickname_length" type="number"> <button
+                        @click="set_max_nickname_length" v-if="max_nickname_length !== max_nickname_length_saved"
+                        style="background-color: #d22; color: white;padding: 2px;border-radius: 8px;">save</button><br />
+                    greetz threshold: <input v-model="greetz_threshold" type="number"> <button
+                        @click="set_greetz_threshold" v-if="greetz_threshold !== greetz_threshold_saved"
+                        style="background-color: #d22; color: white;padding: 2px;border-radius: 8px;">save</button><br />
+                    greetz wb threshold: <input v-model="greetz_wb_threshold" type="number"> <button
+                        @click="set_greetz_wb_threshold" v-if="greetz_wb_threshold !== greetz_wb_threshold_saved"
+                        style="background-color: #d22; color: white;padding: 2px;border-radius: 8px;">save</button><br />
                 </span>
                 <span v-if="channels.includes(channel)">
                     <p v-if="channel === login || is_super_admin" style="padding: 5px">
@@ -376,6 +380,9 @@
                     max_nickname_length: undefined,
                     greetz_threshold: undefined,
                     greetz_wb_threshold: undefined,
+                    max_nickname_length_saved: undefined,
+                    greetz_threshold_saved: undefined,
+                    greetz_wb_threshold_saved: undefined,
                     nicknames: {},
                     editing_username: undefined,
                     editing_nickname: '',
@@ -435,12 +442,15 @@
                     }
                     if (msg.max_nickname_length !== undefined) {
                         this.max_nickname_length = msg.max_nickname_length;
+                        this.max_nickname_length_saved = msg.max_nickname_length;
                     }
                     if (msg.greetz_threshold !== undefined) {
                         this.greetz_threshold = msg.greetz_threshold;
+                        this.greetz_threshold_saved = msg.greetz_threshold;
                     }
                     if (msg.greetz_wb_threshold !== undefined) {
                         this.greetz_wb_threshold = msg.greetz_wb_threshold;
+                        this.greetz_wb_threshold_saved = msg.greetz_wb_threshold;
                     }
                     if (msg.username && msg.custom_greetz !== undefined) {
                         this.custom_greetz[msg.username] = msg.custom_greetz;
@@ -465,7 +475,7 @@
                         .then(res => res.json())
                         .then(json => {
                             this.all_channels = json.all_channels;
-                            this.channels = json.channels;
+                            this.channels = json.enabled_channels;
                         });
                 },
                 async set_enabled(enabled) {
@@ -632,7 +642,7 @@ config.webSocketVersion: ${json.listener?.config?.webSocketVersion}`);
                         .then(json => {
                             console.log('emotes_status', json); //TODO
                             alert(`Emotes Status:
-${JSON.stringify(json, undefined, 2) }`);
+${JSON.stringify(json, undefined, 2)}`);
                         });
                 },
                 clear_chat() {
@@ -693,17 +703,31 @@ ${JSON.stringify(json, undefined, 2) }`);
                     }
                     this.chat = [];
                     this.nicknames = {};
+                    this.max_nickname_length = undefined;
+                    this.max_nickname_length_saved = undefined;
+                    this.greetz_threshold = undefined;
+                    this.greetz_threshold_saved = undefined;
+                    this.greetz_wb_threshold = undefined;
+                    this.greetz_wb_threshold_saved = undefined;
+                    this.youtube_id = '';
+                    this.owncast_url = '';
+                    this.fwd_cmds_yt_twitch = [];
+                    this.editing_username = undefined;
+                    this.editing_nickname = undefined;
+                    this.new_nickname = '';
+                    this.new_username = '';
+                    this.custom_greetz = {};
 
                     if (this.channel) {
                         fetch('/max_nickname_length?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
-                            .then(json => this.max_nickname_length = json);
+                            .then(json => { this.max_nickname_length = json; this.max_nickname_length_saved = json; });
                         fetch('/greetz_threshold?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
-                            .then(json => this.greetz_threshold = json);
+                            .then(json => { this.greetz_threshold = json; this.greetz_threshold_saved = json; });
                         fetch('/greetz_wb_threshold?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
-                            .then(json => this.greetz_wb_threshold = json);
+                            .then(json => { this.greetz_wb_threshold = json; this.greetz_wb_threshold_saved = json; });
                         fetch('/nickname?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
                             .then(json => this.nicknames = json);

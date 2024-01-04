@@ -1,12 +1,14 @@
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, S3Client } = require('@aws-sdk/client-s3');
 
-// Helper function to convert stream to string
-const streamToString = (stream) => new Promise((resolve, reject) => {
+const streamToString = async (stream) => {
     const chunks = [];
-    stream.on('data', (chunk) => chunks.push(chunk));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-});
+
+    for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks).toString("utf-8");
+}
 
 const sanatizePath = (path) => {
     if (path.startsWith('/')) {
@@ -14,15 +16,6 @@ const sanatizePath = (path) => {
     }
     return path.replaceAll('//', '/');
 }
-
-// const validatePath = (path) => {
-//     if (path.startsWith('/')) {
-//         throw 'error: path starts with /: ' + path;
-//     }
-//     if (path.includes('//')) {
-//         throw 'error: // in path: ' + path;
-//     }
-// }
 
 class BucketDB {
     constructor(accessKey, secretKey, endpoint, bucketName, subdir) {
@@ -46,9 +39,11 @@ class BucketDB {
         });
     }
 
-    async set(path, value) {
-        // validatePath(path);
+    async set(path, value, json = true) {
         try {
+            if (json) {
+                value = JSON.stringify(value);
+            }
             const params = {
                 Bucket: this.bucketName, // The path to the directory you want to upload the object to, starting with your Space name.
                 Key: sanatizePath(this.subdir + path), // Object key, referenced whenever you want to access this file later.
@@ -64,11 +59,15 @@ class BucketDB {
         }
     }
 
-    async get(path, default_value = undefined) {
-        // validatePath(path);
+    async get(path, default_value = undefined, json = true) {
         try {
-            const data = await this.s3Client.send(new GetObjectCommand({ Bucket: this.bucketName, Key: sanatizePath(this.subdir + path), }));
-            return await streamToString(data.Body);
+            const data = await this.s3Client.send(new GetObjectCommand({ Bucket: this.bucketName, Key: sanatizePath(this.subdir + path) }));
+            const res = await streamToString(data.Body);
+            if (json) {
+                return JSON.parse(res);
+            } else {
+                return res;
+            }
         } catch (err) {
             if (err.Code !== 'NoSuchKey') { //don't log errors where there was simply no value stored yet
                 console.error('[BucketDB] get error:', err);
@@ -78,41 +77,51 @@ class BucketDB {
     }
 
     async find(path = '') {
-        // validatePath(path);
         try {
-            const data = await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName, Prefix: sanatizePath(this.subdir + path), }));
+            const data = await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName, Prefix: sanatizePath(this.subdir + path) }));
             return (data.Contents ?? []).map(obj => obj.Key.replace(this.subdir, ''));
         } catch (err) {
-            console.error('[BucketDB] get error:', err);
+            console.error('[BucketDB] find error:', err);
             return [];
         }
     }
 
-    async list(path = '') {
-        const found = await this.find(path);
-        path = sanatizePath(path);
-        const result = new Set();
-        if (path !== '' && !path.endsWith('/')) {
-            path += '/';
+    async find_with_values(path = '', json = true) {
+        const res = {};
+        for (const key of await this.find(path)) {
+            res[key] = await this.get(key, undefined, json);
         }
-        found.forEach(filePath => {
-            if (filePath.startsWith(path)) {
-                const subPath = filePath.slice(path.length);
-                const firstSlashIndex = subPath.indexOf('/');
-                if (firstSlashIndex !== -1) {
-                    result.add(subPath.slice(0, firstSlashIndex));
-                } else {
-                    result.add(subPath);
-                }
-            }
-        });
-        return Array.from(result);
+        return res;
+    }
+
+    async list(path = '', indicate_dir = true) {
+        if (!path.endsWith('/')) {
+            path = path + '/';
+        }
+        path = sanatizePath(this.subdir + path);
+        try {
+            const data = await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName, Prefix: path, Delimiter: '/' }));
+            const res = [];
+            (data.CommonPrefixes ?? []).forEach(p => res.push((p.Prefix.endsWith('/') && !indicate_dir) ? p.Prefix.slice(0, -1) : p.Prefix));
+            (data.Contents ?? []).forEach(k => res.push(k.Key));
+            return res.map(item => item.replace(path, ''));
+        } catch (err) {
+            console.error('[BucketDB] list error:', err);
+            return [];
+        }
+    }
+
+    async list_with_values(path = '', indicate_dir = true, json = true) {
+        const res = {};
+        for (const key of await this.list(path, indicate_dir)) {
+            res[key] = await this.get(path + '/' + key, undefined, json);
+        }
+        return res;
     }
 
     async delete(path) {
-        // validatePath(path);
         try {
-            await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.bucketName, Key: sanatizePath(this.subdir + path), }));
+            await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.bucketName, Key: sanatizePath(this.subdir + path) }));
         } catch (err) {
             console.error('[BucketDB] delete error:', err);
         }

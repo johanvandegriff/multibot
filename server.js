@@ -12,12 +12,9 @@ const DEFAULT_CHANNEL_PROPERTIES = {
     'max_nickname_length': 20,
     'greetz_threshold': 5 * HOUR_IN_MILLISECONDS,
     'greetz_wb_threshold': 0.75 * HOUR_IN_MILLISECONDS,
-    'custom_greetz': {},
-    'nickname': {},
 }
 const DEFAULT_VIEWER_PROPERTIES = {
     'custom_greetz': '',
-    'last_seen': undefined,
 }
 const DEFAULT_BOT_NICKNAME = '🤖';
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
@@ -92,8 +89,8 @@ const WebSocketClient = require('websocket').client;
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { EmoteFetcher } = require('@mkody/twitch-emoticons');
-const { fetchLivePage } = require("./node_modules/youtube-chat/dist/requests"); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
-const { Masterchat, stringify } = require("masterchat"); //youtube chat https://github.com/sigvt/masterchat
+const { fetchLivePage } = require('./node_modules/youtube-chat/dist/requests'); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
+const { Masterchat, stringify } = require('masterchat'); //youtube chat https://github.com/sigvt/masterchat
 const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
@@ -101,7 +98,7 @@ const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 const request = require('request');
 const handlebars = require('handlebars');
- const { JsonDB, Config } = require('node-json-db');
+const BucketDB = require('./bucket-db');
 const bodyParser = require('body-parser')
 // var Filter = require('bad-words'),
 // filter = new Filter();
@@ -113,7 +110,7 @@ const RANDOM_NICKNAMES_FILE = '/srv/random-nicknames.txt';
 const RANDOM_NICKNAMES = [];
 
 try {
-    fs.readFileSync(RANDOM_NICKNAMES_FILE).toString().split("\n").forEach(line => {
+    fs.readFileSync(RANDOM_NICKNAMES_FILE).toString().split('\n').forEach(line => {
         if (line !== '') {
             // console.log(line);
             RANDOM_NICKNAMES.push(line);
@@ -125,14 +122,57 @@ try {
 }
 
 dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
-const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
 
-//credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 // Initialize Express and middlewares
 const app = express();
 const jsonParser = bodyParser.json()
 const server = http.createServer(app);
 const io = require('socket.io')(server);
+
+
+const db = new BucketDB(process.env.BUCKET_ACCESS_KEY, process.env.BUCKET_SECRET_KEY, process.env.BUCKET_ENDPOINT, process.env.BUCKET_NAME, process.env.BUCKET_FOLDER);
+
+async function getChannels() {
+    const all_channels = await db.list('channels', indicate_dir = false);
+    const enabled_channels = [];
+    for (const channel of all_channels) {
+        if (await db.get('channels/' + channel + '/enabled')) {
+            enabled_channels.push(channel);
+        }
+    }
+    return { enabled_channels: enabled_channels, all_channels: all_channels };
+}
+
+async function getChannelProperty(channel, property_name) {
+    return await db.get('/channels/' + channel + '/' + property_name, DEFAULT_CHANNEL_PROPERTIES[property_name]);
+}
+async function setChannelProperty(channel, property_name, property_value) {
+    if (property_value === undefined) {
+        await db.delete('channels/' + channel + '/' + property_name);
+    } else {
+        await db.set('channels/' + channel + '/' + property_name, property_value);
+    }
+}
+
+
+async function getViewerProperty(channel, property_name, username) {
+    if (username === undefined) { //if no username is given, get all of them
+        return await db.list_with_values('channels/' + channel + '/' + property_name, {});
+    } else {
+        return await db.get('/channels/' + channel + '/' + property_name + '/' + username, DEFAULT_VIEWER_PROPERTIES[property_name]);
+    }
+}
+async function setViewerProperty(channel, property_name, username, property_value) {
+    if (property_value === undefined) {
+        await db.delete('channels/' + channel + '/' + property_name + '/' + username);
+    } else {
+        await db.set('channels/' + channel + '/' + property_name + '/' + username, property_value);
+    }
+}
+
+
+//credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
+const CALLBACK_URL = process.env.BASE_URL + '/auth/twitch/callback';
 app.use(session({ secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false }));
 app.use(express.static('public'));
 app.use(passport.initialize());
@@ -224,8 +264,7 @@ app.get('/favicon.png', (req, res) => { res.sendFile(__dirname + '/favicon.png')
 //expose the static dir
 app.use('/static', express.static('static'));
 
-//expose the list of channels
-app.get('/channels', async (req, res) => { res.send(JSON.stringify({ channels: await getEnabledChannels(), all_channels: await getChannels() })) });
+app.get('/channels', async (req, res) => { res.send(JSON.stringify(await getChannels())) }); //expose the list of all/enabled channels
 app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history[req.query.channel] || [])) });
 
 function channel_auth_middleware(req, res, next) {
@@ -416,61 +455,6 @@ app.get('/find_youtube_id', async (req, res) => {
         res.status(400).send('invalid');
     }
 });
-
-// The first argument is the database filename. If no extension is used, '.json' is assumed and automatically added.
-// The second argument is used to tell the DB to save after each push
-// If you set the second argument to false, you'll have to call the save() method.
-// The third argument is used to ask JsonDB to save the database in a human readable format. (default false)
-// The last argument is the separator. By default it's slash (/)
- const db = new JsonDB(new Config(JSON_DB_FILE, true, true, '/'));
-
-async function getChannels() {
-    try {
-        const channels = await db.getData('/channels/');
-        return Object.keys(channels);
-    } catch (error) {
-        return [];
-    }
-}
-async function getEnabledChannels() {
-    try {
-        const channels = await db.getData('/channels/');
-        return Object.keys(channels).filter(k => channels[k].enabled);
-    } catch (error) {
-        return [];
-    }
-}
-
-async function getChannelProperty(channel, property_name) {
-    try {
-        return await db.getData('/channels/' + channel + '/' + property_name);
-    } catch (error) {
-        return DEFAULT_CHANNEL_PROPERTIES[property_name];
-    }
-}
-async function setChannelProperty(channel, property_name, property_value) {
-    return await db.push('/channels/' + channel + '/' + property_name, property_value);
-}
-
-
-async function getViewerProperty(channel, property_name, username) {
-    if (username) {
-        try {
-            return await db.getData('/channels/' + channel + '/' + property_name + '/' + username);
-        } catch (error) {
-            return DEFAULT_VIEWER_PROPERTIES[property_name];
-        }
-    } else {
-        return await getChannelProperty(channel, property_name);
-    }
-}
-async function setViewerProperty(channel, property_name, username, property_value) {
-    if (property_value) {
-        await db.push('/channels/' + channel + '/' + property_name + '/' + username, property_value);
-    } else {
-        await db.delete('/channels/' + channel + '/' + property_name + '/' + username);
-    }
-}
 
 
 function random_choice(arr) {
@@ -669,7 +653,7 @@ update_emote_cache(undefined); //update the global emote cache
 //after running for a bit, update all the emote caches. this will prevent spamming the API during testing
 setTimeout(async () => {
     await update_emote_cache_if_needed(undefined);
-    (await getEnabledChannels()).forEach(async channel => await update_emote_cache_if_needed(channel));
+    (await getChannels()).enabled_channels.forEach(async channel => await update_emote_cache_if_needed(channel));
 }, EMOTE_STARTUP_DELAY);
 
 //twitch chat stuff
@@ -691,11 +675,11 @@ async function connectToTwitchChat() {
             username: process.env.TWITCH_BOT_USERNAME,
             password: process.env.TWITCH_BOT_OAUTH_TOKEN
         },
-        channels: await getEnabledChannels()
+        channels: (await getChannels()).enabled_channels
     };
 
-    // console.log("[twitch] SECRETS:", JSON.stringify(opts));
-    console.log("[twitch] CHANNELS:", JSON.stringify(opts.channels));
+    // console.log('[twitch] SECRETS:', JSON.stringify(opts));
+    console.log('[twitch] CHANNELS:', JSON.stringify(opts.channels));
 
     // Create a client with our options
     tmi_client = new tmi.client(opts);
@@ -711,6 +695,12 @@ async function connectToTwitchChat() {
     connectToTwitchChat();
 })();
 
+const lastSeens = {
+    // jjvanvan: { // channel
+    //     'JJBotBot': 123456, //chatter -> last seen timestamp
+    //     'JJVanVan': 123456,
+    // }
+};
 
 // Called every time the bot connects to Twitch chat
 function onConnectedHandler(addr, port) {
@@ -723,8 +713,14 @@ async function onMessageHandler(target, context, msg, self) {
     console.log(`[twitch] ${username}: ${msg}`);
     const channel = target.replace('#', '');
 
-    // Ignore whispers
-    if (context["message-type"] === "whisper") { return; }
+    if (context['message-type'] === 'whisper') {
+        return; //ignore whispers
+    }
+
+    if (!username) {
+        console.error('[twitch] no username in message');
+        return; //ignore messages with no username
+    }
 
     const nickname = await getViewerProperty(channel, 'nickname', username);
 
@@ -738,7 +734,7 @@ async function onMessageHandler(target, context, msg, self) {
     if (username.toLowerCase() !== process.env.TWITCH_BOT_USERNAME.toLowerCase()) {
         if (nickname !== undefined) {
             if (!carl_command) { //carl already replies, no need for double
-                const lastSeen = await getViewerProperty(channel, 'lastseen', username);
+                const lastSeen = (lastSeens[channel] ?? {})[username];
                 const now = + new Date();
                 console.log('[greetz]', username, now - lastSeen);
                 if (lastSeen === undefined || now - lastSeen > await getChannelProperty(channel, 'greetz_threshold')) {
@@ -763,7 +759,11 @@ async function onMessageHandler(target, context, msg, self) {
                     }
                 }
             }
-            setViewerProperty(channel, 'lastseen', username, + new Date());
+            if (lastSeens[channel] === undefined) {
+                lastSeens[channel] = {};
+            }
+            lastSeens[channel][username] = + new Date();
+            console.log('lastSeens', lastSeens);
         }
     }
 }
@@ -789,7 +789,7 @@ async function getNicknameMsg(channel, username) {
 }
 
 async function getUsername(channel, nickname) {
-    const nicknames = await getChannelProperty(channel, 'nickname');
+    const nicknames = await getViewerProperty(channel, 'nickname');
     let found = undefined;
     Object.keys(nicknames).forEach(username => {
         if (nicknames[username] === nickname) {
@@ -813,13 +813,13 @@ async function getUsernameMsg(channel, nickname) {
 }
 
 async function nicknameAlreadyTaken(channel, nickname) {
-    const nicknames = Object.values(await getChannelProperty(channel, 'nickname'));
+    const nicknames = Object.values(await getViewerProperty(channel, 'nickname'));
     return nicknames.includes(nickname);
 }
 
 async function updateChatHistory(channel) {
     if (chat_history[channel]) {
-        const nicknames = await getChannelProperty(channel, 'nickname');
+        const nicknames = await getViewerProperty(channel, 'nickname');
         chat_history[channel].forEach(msg => {
             msg.nickname = nicknames[msg.username];
         });
@@ -875,7 +875,7 @@ async function handleCommand(target, context, msg, username) {
             twitch_try_say(target, `@${username} you already don't have a nickname`);
         }
     } else if (command === '!setnickname') {
-        const used_nicknames = Object.values(await getViewerProperty(channel, 'nickname', undefined));
+        const used_nicknames = Object.values(getViewerProperty(channel, 'nickname'));
         console.log(used_nicknames);
         const remaining_random_nicknames = JSON.parse(JSON.stringify(RANDOM_NICKNAMES)).filter(nickname => !used_nicknames.includes(nickname));
         if (remaining_random_nicknames.length > 0) {
@@ -927,12 +927,12 @@ async function handleCommand(target, context, msg, username) {
         const response = await fetch(url);
         const data = await response.text();
         if (response.status === 200) {
-            console.log("[bot] CARL:", data);
+            console.log('[bot] CARL:', data);
             let display_data = data;
             if (data.includes('CARL') || data.includes('Carl') || data.includes('carl')) {
                 const nickname = await getViewerProperty(channel, 'nickname', username);
                 display_data = data.replaceAll('CARL', nickname).replaceAll('Carl', nickname).replaceAll('carl', nickname);
-                console.log("[bot] CARL (edited): ", display_data);
+                console.log('[bot] CARL (edited): ', display_data);
             }
             if (filter.isProfane(display_data) || display_data.toLowerCase().includes('stupid') || display_data.toLowerCase().includes('dumb') || display_data.toLowerCase().includes('idiot')) {
                 display_data = `<3`;
@@ -978,7 +978,7 @@ async function getLiveVideoId(youtube_id) {
 const youtube_chats = {
     // 'jjvanvan': { 
     //     youtube_id: 'UCmrLaVZneWG3kJyPqp-RFJQ',
-    //     listener: await Masterchat.init("IKRQQAMYnrM"),
+    //     listener: await Masterchat.init('IKRQQAMYnrM'),
     // }
 };
 
@@ -1009,7 +1009,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
 
     const mc = await Masterchat.init(liveVideoId);
     // Listen for live chat
-    mc.on("chat", async (chat) => {
+    mc.on('chat', async (chat) => {
         const timestamp = new Date(chat.timestamp);
         const now = new Date();
         const message_age = now - timestamp;
@@ -1035,33 +1035,33 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
 
     // Listen for any events
     //   See below for a list of available action types
-    mc.on("actions", (actions) => {
+    mc.on('actions', (actions) => {
         const chats = actions.filter(
-            (action) => action.type === "addChatItemAction"
+            (action) => action.type === 'addChatItemAction'
         );
         const superChats = actions.filter(
-            (action) => action.type === "addSuperChatItemAction"
+            (action) => action.type === 'addSuperChatItemAction'
         );
         const superStickers = actions.filter(
-            (action) => action.type === "addSuperStickerItemAction"
+            (action) => action.type === 'addSuperStickerItemAction'
         );
         // ...
     });
 
     // Handle errors
-    mc.on("error", (err) => {
+    mc.on('error', (err) => {
         console.log(`[youtube] [for twitch.tv/${channel}] ${err.code}`);
-        // "disabled" => Live chat is disabled
-        // "membersOnly" => No permission (members-only)
-        // "private" => No permission (private video)
-        // "unavailable" => Deleted OR wrong video id
-        // "unarchived" => Live stream recording is not available
-        // "denied" => Access denied (429)
-        // "invalid" => Invalid request
+        // 'disabled' => Live chat is disabled
+        // 'membersOnly' => No permission (members-only)
+        // 'private' => No permission (private video)
+        // 'unavailable' => Deleted OR wrong video id
+        // 'unarchived' => Live stream recording is not available
+        // 'denied' => Access denied (429)
+        // 'invalid' => Invalid request
     });
 
     // Handle end event
-    mc.on("end", () => {
+    mc.on('end', () => {
         console.log(`[youtube] [for twitch.tv/${channel}] live stream has ended or chat was disconnected`);
         delete youtube_chats[channel];
         twitch_try_say(channel, `disconnected from youtube chat`);
@@ -1081,7 +1081,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
 
 async function connect_to_all_youtubes() {
     console.log('[youtube] attempting to connect to all youtube chats');
-    (await getEnabledChannels()).forEach(async channel => {
+    (await getChannels()).enabled_channels.forEach(async channel => {
         if (youtube_chats[channel]) {
             console.log('[youtube] already connected to youtube live chat for twitch channel ' + channel);
         } else {
@@ -1123,14 +1123,14 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
 
     const onMessageReceived = (message) => {
         //message received
-        console.log("[owncast] Received: '" + JSON.stringify(message) + "'");
+        console.log('[owncast] Received:', JSON.stringify(message));
         //user joins:
-        //Received: '{"id":"dZl60kLng","timestamp":"2022-02-27T23:37:24.330263605Z","type":"USER_JOINED","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]}}'
+        //Received: {"id":"dZl60kLng","timestamp":"2022-02-27T23:37:24.330263605Z","type":"USER_JOINED","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]}}
         //message:
-        // Received: '{"body":"hello world","id":"En3e0kY7g","timestamp":"2022-02-27T23:37:28.502353829Z","type":"CHAT","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]},"visible":true}'
-        // Received: '{"body":"<p>Johan :tux:  liked that this stream went live.</p>\n","id":"uep4JgKIg","image":"https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png","link":"https://fosstodon.org/users/johanv","timestamp":"2023-12-30T16:29:25.371196748Z","title":"johanv@fosstodon.org","type":"FEDIVERSE_ENGAGEMENT_LIKE","user":{"displayName":"johanv.net"}}'
+        // Received: {"body":"hello world","id":"En3e0kY7g","timestamp":"2022-02-27T23:37:28.502353829Z","type":"CHAT","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]},"visible":true}
+        // Received: {"body":"<p>Johan :tux:  liked that this stream went live.</p>\n","id":"uep4JgKIg","image":"https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png","link":"https://fosstodon.org/users/johanv","timestamp":"2023-12-30T16:29:25.371196748Z","title":"johanv@fosstodon.org","type":"FEDIVERSE_ENGAGEMENT_LIKE","user":{"displayName":"johanv.net"}}
         //simplified: {"body": "hello world", "user": {"displayName": "priceless-roentgen"}}
-        if ("body" in message && "user" in message && "displayName" in message.user) {
+        if ('body' in message && 'user' in message && 'displayName' in message.user) {
             const name = message.user.displayName;
             let text = message.body;
             let emotes = undefined;
@@ -1166,7 +1166,7 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ "displayName": DEFAULT_BOT_NICKNAME }),
+            body: JSON.stringify({ 'displayName': DEFAULT_BOT_NICKNAME }),
         });
 
         const res_json = await res.json();
@@ -1186,11 +1186,12 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
         client.on('connect', function (connection) {
             console.log('[owncast] WebSocket Client Connected');
             connection.on('error', function (error) {
-                console.log("[owncast] Connection Error: " + error.toString());
+                console.log('[owncast] Connection Error: ' + error.toString());
                 onErrorOrClose();
             });
             connection.on('close', function () {
-                console.log('[owncast] Connection Closed');
+                console.log(`[owncast] disconnected from owncast chat: https://${owncast_url}`);
+                twitch_try_say(channel, `disconnected from owncast chat: https://${owncast_url}`);
                 onErrorOrClose();
             });
             connection.on('message', function (message) {
@@ -1198,7 +1199,7 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
                     // console.log("Received: '" + message.utf8Data + "'");
 
                     //multiple json objects can be sent in the same message, separated by newlines
-                    message.utf8Data.split("\n").forEach(text => onMessageReceived(JSON.parse(text)));
+                    message.utf8Data.split('\n').forEach(text => onMessageReceived(JSON.parse(text)));
                     // onMessageReceived({ "body": "<p>Johan :tux:  liked that this stream went live.</p>\n", "id": "uep4JgKIg", "image": "https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png", "link": "https://fosstodon.org/users/johanv", "timestamp": "2023-12-30T16:29:25.371196748Z", "title": "johanv@fosstodon.org", "type": "FEDIVERSE_ENGAGEMENT_LIKE", "user": { "displayName": "johanv.net" } });
                 }
             });
@@ -1222,7 +1223,7 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
 
 async function connect_to_all_owncasts() {
     console.log('[owncast] attempting to connect to all owncast chats');
-    (await getEnabledChannels()).forEach(async channel => {
+    (await getChannels()).enabled_channels.forEach(async channel => {
         if (owncast_chats[channel]) {
             console.log('[owncast] already connected to owncast live chat for twitch channel ' + channel);
         } else {
@@ -1274,7 +1275,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
 //TODO better UI for greetz threshold
 //TODO maybe dont save to carl history if replaced with <3
-//TODO maybe make nickname text slightly smaller
 //TODO bot respond to alerts
 //TODO separate vip chat
 //TODO commands in the bot's chat to play videos on the 24/7 stream
@@ -1287,3 +1287,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO when !songlist is typed on youtube, reply with `The song list for this channel is available at https://nightbot.tv/t/[channel]/song_requests`
 //TODO summary of youtube chat in twitch chat and vice versa? what about owncast? exponential combinatorics as more chats are added
 //TODO command forwarding from owncast to twitch?
+//TODO publish bucket-db as a npm package
+//TODO local s3 in docker with artificial delay time (& update README)
+//TODO optimize getting enabled channels, maybe store it in the bucket at /enabled, where an empty file named the channel means the channel is enabled, and no file means disabled
