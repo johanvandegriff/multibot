@@ -101,7 +101,7 @@ const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 const request = require('request');
 const handlebars = require('handlebars');
-const { JsonDB, Config } = require('node-json-db');
+ const { JsonDB, Config } = require('node-json-db');
 const bodyParser = require('body-parser')
 // var Filter = require('bad-words'),
 // filter = new Filter();
@@ -422,7 +422,7 @@ app.get('/find_youtube_id', async (req, res) => {
 // If you set the second argument to false, you'll have to call the save() method.
 // The third argument is used to ask JsonDB to save the database in a human readable format. (default false)
 // The last argument is the separator. By default it's slash (/)
-const db = new JsonDB(new Config(JSON_DB_FILE, true, true, '/'));
+ const db = new JsonDB(new Config(JSON_DB_FILE, true, true, '/'));
 
 async function getChannels() {
     try {
@@ -547,7 +547,7 @@ function send_global_event(msg) {
 //if any of this fails, the send_chat code will fall back to just twitch emotes
 // https://github.com/mkody/twitch-emoticons
 const emote_cache = {
-    // 'jjvantheman': {
+    // 'jjvanvan': {
     //     emotes: {
     //         catJAM: 'https://cdn.7tv.app/emote/60ae7316f7c927fad14e6ca2/1x.webp',
     //     },
@@ -557,7 +557,7 @@ const emote_cache = {
 }
 
 async function update_emote_cache(channel) {
-    console.log('[emotes] updating emote cache for channel', channel);
+    console.log('[emotes] updating emote cache for channel:', channel);
     if (!emote_cache[channel]) {
         emote_cache[channel] = {}
     }
@@ -582,39 +582,41 @@ async function update_emote_cache(channel) {
             channel_ffz: false,
         }
 
-        //get the channel emotes for each service - optional, so continue if any fail
-        try {
-            const helixUser = await fetcher.apiClient.users.getUserByName(channel);
-            console.log('[emotes] helixUser:', helixUser, channel);
-            const channelId = parseInt(helixUser.id);
-            console.log('[emotes] channelId', channelId, channel);
-            // try {
-            //     await fetcher.fetchTwitchEmotes(channelId); // Twitch channel
-            //     connections.channel_twitch = true;
-            // } catch (err) {
-            //     connections.channel_twitch = false;
-            //     console.error('[emotes] twitch channel emotes error:', channel, err);
-            // }
+        if (channel !== undefined) {
+            //get the channel emotes for each service - optional, so continue if any fail
             try {
-                await fetcher.fetchBTTVEmotes(channelId); // BTTV channel
-                connections.channel_bttv = true;
+                const helixUser = await fetcher.apiClient.users.getUserByName(channel);
+                console.log('[emotes] helixUser:', helixUser, channel);
+                const channelId = parseInt(helixUser.id);
+                console.log('[emotes] channelId', channelId, channel);
+                // try {
+                //     await fetcher.fetchTwitchEmotes(channelId); // Twitch channel
+                //     connections.channel_twitch = true;
+                // } catch (err) {
+                //     connections.channel_twitch = false;
+                //     console.error('[emotes] twitch channel emotes error:', channel, err);
+                // }
+                try {
+                    await fetcher.fetchBTTVEmotes(channelId); // BTTV channel
+                    connections.channel_bttv = true;
+                } catch (err) {
+                    console.error('[emotes] bttv channel emotes error:', channel, JSON.stringify(err));
+                }
+                try {
+                    await fetcher.fetchSevenTVEmotes(channelId); // 7TV channel
+                    connections.channel_7tv = true;
+                } catch (err) {
+                    console.error('[emotes] 7tv channel emotes error:', channel, JSON.stringify(err));
+                }
+                try {
+                    await fetcher.fetchFFZEmotes(channelId); // FFZ channel
+                    connections.channel_ffz = true;
+                } catch (err) {
+                    console.error('[emotes] ffz channel emotes error:', channel, JSON.stringify(err));
+                }
             } catch (err) {
-                console.error('[emotes] bttv channel emotes error:', channel, JSON.stringify(err));
+                console.error('[emotes] error getting channel emotes:', channel, err);
             }
-            try {
-                await fetcher.fetchSevenTVEmotes(channelId); // 7TV channel
-                connections.channel_7tv = true;
-            } catch (err) {
-                console.error('[emotes] 7tv channel emotes error:', channel, JSON.stringify(err));
-            }
-            try {
-                await fetcher.fetchFFZEmotes(channelId); // FFZ channel
-                connections.channel_ffz = true;
-            } catch (err) {
-                console.error('[emotes] ffz channel emotes error:', channel, JSON.stringify(err));
-            }
-        } catch (err) {
-            console.error('[emotes] error getting channel emotes:', channel, err);
         }
 
         const now = + new Date();
@@ -693,6 +695,7 @@ async function connectToTwitchChat() {
     };
 
     // console.log("[twitch] SECRETS:", JSON.stringify(opts));
+    console.log("[twitch] CHANNELS:", JSON.stringify(opts.channels));
 
     // Create a client with our options
     tmi_client = new tmi.client(opts);
@@ -973,7 +976,7 @@ async function getLiveVideoId(youtube_id) {
 }
 
 const youtube_chats = {
-    // 'jjvantheman': { 
+    // 'jjvanvan': { 
     //     youtube_id: 'UCmrLaVZneWG3kJyPqp-RFJQ',
     //     listener: await Masterchat.init("IKRQQAMYnrM"),
     // }
@@ -1093,7 +1096,7 @@ setInterval(connect_to_all_youtubes, YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL);
 
 //owncast chat stuff
 const owncast_chats = {
-    // 'jjvantheman': { 
+    // 'jjvanvan': { 
     //     owncast_url: 'johanv.net',
     //     listener: ???,
     // }
@@ -1237,31 +1240,50 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
     console.log('listening on *:' + (process.env.PORT || DEFAULT_PORT));
 });
 
+//===PRIORITY===
+//TODO migrate from json db to digitalocean spaces with separated files per channel at least
+//TODO function for super admin to import/export json
+//TODO test latency of DO spaces vs storj + minio
+//TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage
+//TODO system to backup the data
+//TODO fix the profanity filter console.log(filter.clean("It smells like wrongdog in here.")) //???? like -> l***
+//TODO public dashboard page
+//TODO keep track of version and if mismatch, send reload request
+//TODO auto reload if popout chat or public dashboard page, otherwise ask to reload
+//TODO bot able to post on youtube
+
+//===EASY===
+//TODO replace || with ?? to prevent possible bugs, and test it
+//TODO args to !multichat command to change the link, and tell it in message
+//TODO link to source code on the page
+
+//===BUGS===
+//TODO failed to get chat messages after saying it was connected on the 1min timer
+//TODO bot missing username when enabled and already has youtube_id ": connected to youtube chat"
+//TODO bot keeps reconnecting to twitch chat, maybe every youtube check?
+
+//===REFACTOR===
+//TODO abstract out the sharing of state thru sockets?
+//TODO rethink the api paths to something like /api/channels/:channel/nicknames/:username etc.
+//TODO make it able to scale horizontally
 
 //TODO allow mods to use the admin page for the streamer
-//TODO link to source code on the page
 //TODO give the bot "watching without audio/video" badge
-//TODO merge in the nickname bot
 //TODO youtube emotes
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
-//TODO abstract out the sharing of state thru sockets?
-//TODO failed to get chat messages after saying it was connected on the 1min timer
-//TODO bot missing username when enabled and already has youtube_id ": connected to youtube chat"
-//TODO rethink the api paths to something like /api/channels/:channel/nicknames/:username etc.
 //TODO better UI for greetz threshold
-//TODO owncast chat, then remove it from obs scene
-//TODO delete twitch-nicknames-bot repo
 //TODO maybe dont save to carl history if replaced with <3
 //TODO maybe make nickname text slightly smaller
-//TODO bot keeps reconnecting to twitch chat, maybe every youtube check?
 //TODO bot respond to alerts
 //TODO separate vip chat
-//TODO args to multichat command to change the link, and tell it in message
-//TODO public dashboard page
-//TODO keep track of version and if mismatch, send reload request
-//TODO auto reload if popout chat or dashboard page, otherwise ask to reload
 //TODO commands in the bot's chat to play videos on the 24/7 stream
 //TODO a way for super admin to call an api to get/set/delete anything in the database, for example delete last seen time
 //TODO twitch badges
 //TODO twitch /me
+//TODO twitch show replies
+//TODO do an actual reply instead of @'ing the user
+//TODO !songlist reply on youtube - You: !songlist Nightbot: @You -> The song list for this channel is available at https://nightbot.tv/t/streamer/song_requests
+//TODO when !songlist is typed on youtube, reply with `The song list for this channel is available at https://nightbot.tv/t/[channel]/song_requests`
+//TODO summary of youtube chat in twitch chat and vice versa? what about owncast? exponential combinatorics as more chats are added
+//TODO command forwarding from owncast to twitch?
