@@ -1,13 +1,13 @@
 const SECRETS_FILE = '/srv/secret.env';
-const JSON_DB_FILE = '/srv/data.json';
-
 const fs = require('fs');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
 
 // const subdir = 'prod';
-// const subdir = 'qa';
-const subdir = process.env.BUCKET_FOLDER;
+const subdir = 'qa';
+// const subdir = process.env.BUCKET_FOLDER;
+// const JSON_DB_FILE = '/srv/prod-data.json';
+const JSON_DB_FILE = '/srv/qa-data.json';
 
 const { JsonDB, Config } = require('node-json-db');
 const BucketDB = require('./bucket-db');
@@ -125,9 +125,11 @@ async function clearJson() {
     // console.log(val);
 
     // await clearBucket(); //warning: will delete everything in the bucket
+    // console.log(+ new Date() - start);
     // await jsonToBucket(); //warning: will overwrite what is already in the bucket
 
     await clearJson(); //warning: will delete everything in the json file
+    console.log(+ new Date() - start);
     await bucketToJson(); //warning: will overwrite what is already in the json file
 
     console.log(+ new Date() - start);
