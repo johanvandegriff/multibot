@@ -86,6 +86,15 @@
             color: white
         }
 
+        .pronoun {
+            padding: 0.5px;
+            margin-right: 4px;
+            font-weight: bold;
+            border-radius: 5px;
+            font-size: smaller;
+            border: 1px solid lightgray;
+        }
+
         #chat {
             width: 50%;
             height: 100%;
@@ -261,7 +270,7 @@
                     visiting this page and logging in.
                 </p>
                 <ul id="nicknames">
-                    <li v-for="username in Object.keys(nicknames)" :style="{ color: compute_color(username) }">
+                    <li v-for="username in Object.keys(nicknames)" :style="{ color: get_user_color(username) }">
                         <span v-if="editing_username === username">
                             <input v-model="editing_nickname">
                             <button @click="save_nickname">done</button>
@@ -276,7 +285,7 @@
                         <span class="username">[[ username ]]</span>
                         <span class="delete" v-if="loggedIn && channel === login || is_super_admin">
                             &nbsp;<button class="custom_greetz" @click="set_custom_greetz(username)">custom greetz
-                                ([[ custom_greetz[username] || 'none set' ]])</button>
+                                ([[ custom_greetz[username] ?? 'none set' ]])</button>
                             <span class="delete" @click="delete_nickname(username)"> ⓧ</span>
                         </span>
                     </li>
@@ -295,17 +304,22 @@
             <div id="chat-header" v-if="!is_chat_fullscreen">
                 <h2>Chat</h2>
                 <a style="top: 0; position: absolute; left: 100px" target="_blank"
-                    :href="'/chat?channel=' + channel + '&show_usernames=' + show_usernames + '&show_nicknames=' + show_nicknames">pop-out<img
+                    :href="'/chat?channel=' + channel + '&show_usernames=' + show_usernames + '&show_nicknames=' + show_nicknames + '&show_pronouns=' + show_pronouns">pop-out<img
                         style="width:20px" src="/static/external-link-ltr-icon.svg" alt="popout chat" /></a>
+                <label><input type="checkbox" v-model="show_usernames">show usernames</label>&nbsp;
                 <label><input type="checkbox" v-model="show_nicknames">show nicknames</label>&nbsp;
-                <label><input type="checkbox" v-model="show_usernames">show usernames</label>
+                <label><input type="checkbox" v-model="show_pronouns">show pronouns</label>
 
             </div>
             <ul id="messages"
                 :style="is_chat_fullscreen ? { 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' } : {}">
                 <li v-for="msg in chat">
                     <!-- TODO: get the correct username color from youtube -->
-                    <span :style="{ color: msg.color || compute_color(msg.username), 'font-weight': 'bold' }">
+                    <span :style="{ color: get_user_color(msg.username), 'font-weight': 'bold' }">
+                        <span v-if="show_pronouns && msg.pronouns" class="pronoun"
+                            :style="{ 'border-color': get_user_color(msg.username) }">
+                            [[ msg.pronouns ]]
+                        </span>
                         <span v-if="show_usernames || !(show_nicknames && msg.nickname)">[[ msg.username ]]</span>
                         <span v-if="show_nicknames && msg.nickname">
                             <span v-if="show_usernames"> (<span class="nickname">[[ msg.nickname ]]</span>)</span>
@@ -362,6 +376,7 @@
                     channel: '{{channel}}',
                     channels: undefined,
                     chat: [],
+                    user_colors: {},
                     accessToken: '{{user.accessToken}}',
                     refreshToken: '{{user.refreshToken}}',
                     display_name: '{{user.display_name}}',
@@ -391,11 +406,15 @@
                     custom_greetz: {},
                     show_usernames: '{{show_usernames}}' !== 'false',
                     show_nicknames: '{{show_nicknames}}' !== 'false',
+                    show_pronouns: '{{show_pronouns}}' !== 'false',
                 }
             },
             methods: {
                 compute_color(text) {
                     return this.colorHash.hex(text + "....");
+                },
+                get_user_color(username) {
+                    return this.user_colors[username] ?? this.compute_color(username);
                 },
                 scroll_chat() {
                     const messages = document.querySelector('#messages');
@@ -416,6 +435,9 @@
                         console.log('clear_chat', msg.clear_chat);
                         this.chat = [];
                     } else {
+                        if (msg.color) {
+                            this.user_colors[msg.username] = msg.color;
+                        }
                         this.chat.push(msg);
                         this.scroll_chat();
                     }

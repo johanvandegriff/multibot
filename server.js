@@ -23,6 +23,8 @@ const OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 const EMOTE_STARTUP_DELAY = 2 * 60 * 1000; //2 minutes
 const EMOTE_CACHE_TIME = 1 * 60 * 60 * 1000; //1 hour
 const EMOTE_RETRY_TIME = 30 * 1000; //30 seconds
+const PRONOUN_CACHE_TIME = 24 * 60 * 60 * 1000; //1 day
+const PRONOUN_RETRY_TIME = 30 * 1000; //30 seconds
 const GREETZ_DELAY_FOR_COMMAND = 2 * 1000; //wait 2 seconds to greet when the user ran a command
 const TWITCH_MESSAGE_DELAY = 500; //time to wait between twitch chats for both to go thru
 const ENABLED_COOLDOWN = 5 * 1000; //only let users enable/disable their channel every 5 seconds
@@ -245,12 +247,12 @@ const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
 app.get('/', function (req, res) { res.send(template({ channel: '', user: req.session?.passport?.user })); });
-app.get('/chat', (req, res) => { res.send(template({ is_chat_fullscreen: true, channel: req.query.channel, bgcolor: req.query.bgcolor || 'transparent', show_usernames: req.query.show_usernames, show_nicknames: req.query.show_nicknames })) });
+app.get('/chat', (req, res) => { res.send(template({ is_chat_fullscreen: true, channel: req.query.channel, bgcolor: req.query.bgcolor ?? 'transparent', show_usernames: req.query.show_usernames, show_nicknames: req.query.show_nicknames, show_pronouns: req.query.show_pronouns })) });
 
 app.get('/logout', function (req, res, next) {
     req.logout(function (err) {
         if (err) { return next(err); }
-        res.redirect('/' + (req.query.returnTo || ''));
+        res.redirect('/' + (req.query.returnTo ?? ''));
     });
 });
 
@@ -265,7 +267,7 @@ app.get('/favicon.png', (req, res) => { res.sendFile(__dirname + '/favicon.png')
 app.use('/static', express.static('static'));
 
 app.get('/channels', async (req, res) => { res.send(JSON.stringify(await getChannels())) }); //expose the list of all/enabled channels
-app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history[req.query.channel] || [])) });
+app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history[req.query.channel] ?? [])) });
 
 function channel_auth_middleware(req, res, next) {
     const login = req.session?.passport?.user?.login;
@@ -323,8 +325,10 @@ app.post('/enabled', jsonParser, channel_auth_middleware, validate_middleware('e
                     send_nickname(channel, process.env.TWITCH_BOT_USERNAME, DEFAULT_BOT_NICKNAME);
                 }
                 connect_to_youtube(channel);
+                connect_to_owncast(channel);
             } else {
                 disconnect_from_youtube(channel);
+                disconnect_from_owncast(channel);
             }
             connectToTwitchChat();
             send_global_event({ channel: channel, enabled: enabled });
@@ -395,7 +399,7 @@ app.post('/youtube_id', jsonParser, channel_auth_middleware, validate_middleware
     }
     res.end();
 });
-app.get('/youtube_status', async (req, res) => { res.send(youtube_chats[req.query.channel] || {}) });
+app.get('/youtube_status', async (req, res) => { res.send(youtube_chats[req.query.channel] ?? {}) });
 
 app.get('/owncast_url', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'owncast_url')) });
 app.post('/owncast_url', jsonParser, channel_auth_middleware, validate_middleware('owncast_url', 'string'), async (req, res) => {
@@ -408,9 +412,9 @@ app.post('/owncast_url', jsonParser, channel_auth_middleware, validate_middlewar
     }
     res.end();
 });
-app.get('/owncast_status', async (req, res) => { res.send(owncast_chats[req.query.channel] || {}) });
+app.get('/owncast_status', async (req, res) => { res.send(owncast_chats[req.query.channel] ?? {}) });
 app.get('/emotes_status', async (req, res) => {
-    const emote_cache_copy = JSON.parse(JSON.stringify(emote_cache[req.query.channel] || {}));
+    const emote_cache_copy = JSON.parse(JSON.stringify(emote_cache[req.query.channel] ?? {}));
     delete emote_cache_copy.emotes;
     res.send(emote_cache_copy);
 });
@@ -490,7 +494,7 @@ io.on('connection', (socket) => {
     });
 });
 
-function send_chat(channel, username, nickname, color, text, emotes) {
+function send_chat(channel, username, nickname, color, text, emotes, pronouns) {
     if (!emotes) {
         emotes = {};
     }
@@ -500,7 +504,7 @@ function send_chat(channel, username, nickname, color, text, emotes) {
     } catch (err) {
         console.error('[emotes] error finding 3rd party emotes:', channel, text, err);
     }
-    const iomsg = { username: username, nickname: nickname, color: color, emotes: emotes, text: text };
+    const iomsg = { username: username, nickname: nickname, pronouns: pronouns, color: color, emotes: emotes, text: text };
     if (!chat_history[channel]) {
         chat_history[channel] = [];
     }
@@ -527,6 +531,77 @@ function send_global_event(msg) {
     io.emit('global_event', msg);
 }
 
+//pronouns - https://pronouns.alejo.io/
+let possible_pronouns = {
+    aeaer: "Ae/Aer",
+    any: "Any",
+    eem: "E/Em",
+    faefaer: "Fae/Faer",
+    hehim: "He/Him",
+    heshe: "He/She",
+    hethem: "He/They",
+    itits: "It/Its",
+    other: "Other",
+    perper: "Per/Per",
+    sheher: "She/Her",
+    shethem: "She/They",
+    theythem: "They/Them",
+    vever: "Ve/Ver",
+    xexem: "Xe/Xem",
+    ziehir: "Zie/Hir",
+};
+(async () => {
+    const response = await fetch('https://pronouns.alejo.io/api/pronouns');
+    const data = await response.json();
+    //[{"name":"aeaer","display":"Ae/Aer"},{"name":"any","display":"Any"},{"name":"eem","display":"E/Em"},{"name":"faefaer","display":"Fae/Faer"},{"name":"hehim","display":"He/Him"},{"name":"heshe","display":"He/She"},{"name":"hethem","display":"He/They"},{"name":"itits","display":"It/Its"},{"name":"other","display":"Other"},{"name":"perper","display":"Per/Per"},{"name":"sheher","display":"She/Her"},{"name":"shethem","display":"She/They"},{"name":"theythem","display":"They/Them"},{"name":"vever","display":"Ve/Ver"},{"name":"xexem","display":"Xe/Xem"},{"name":"ziehir","display":"Zie/Hir"}]
+    const new_possible_pronouns = {};
+    for (const item of data) {
+        new_possible_pronouns[item.name] = item.display;
+    }
+    console.log(JSON.stringify(possible_pronouns), JSON.stringify(new_possible_pronouns));
+    possible_pronouns = new_possible_pronouns;
+    console.log('[pronouns] fetched pronoun list of length', Object.keys(new_possible_pronouns).length);
+})();
+
+const pronoun_cache = {
+    // jjvanvan: {
+    //     pronouns: 'Any', //display name, looked up from possible_pronouns['any']
+    //     pronouns: undefined, //if there are none associated with this user
+    //     lastUpdated: 123456, //or undefined if never
+    //     startedUpdating: 123456, //or undefined if done updating
+    // },
+    // user: undefined //if pronouns haven't been looked up yet
+}
+
+async function update_pronoun_cache_if_needed(username) {
+    const now = + new Date();
+    const lastUpdated = pronoun_cache[username]?.lastUpdated ?? 0;
+    const startedUpdating = pronoun_cache[username]?.startedUpdating ?? 0;
+    console.log('[pronouns] pronoun cache status:', username, now, lastUpdated, PRONOUN_CACHE_TIME, startedUpdating, PRONOUN_RETRY_TIME);
+    if (now > lastUpdated + PRONOUN_CACHE_TIME && now > startedUpdating + PRONOUN_RETRY_TIME) {
+        if (!pronoun_cache[username]) {
+            pronoun_cache[username] = {}
+        }
+        pronoun_cache[username].startedUpdating = now;
+
+        const response = await fetch('https://pronouns.alejo.io/api/users/' + username); //[{"id":"501240813","login":"jjvanvan","pronoun_id":"any"}]
+        const data = await response.json();
+        const pronoun_id = data[0]?.pronoun_id;
+        pronoun_cache[username] = {
+            pronouns: possible_pronouns[pronoun_id],
+            lastUpdated: now,
+        };
+    }
+}
+
+function getPronouns(username) {
+    console.log(pronoun_cache)
+    update_pronoun_cache_if_needed(username); //this update will run in the background and will not help for this time
+    return pronoun_cache[username]?.pronouns;
+}
+
+
+
 //3rd party emotes
 //if any of this fails, the send_chat code will fall back to just twitch emotes
 // https://github.com/mkody/twitch-emoticons
@@ -536,7 +611,7 @@ const emote_cache = {
     //         catJAM: 'https://cdn.7tv.app/emote/60ae7316f7c927fad14e6ca2/1x.webp',
     //     },
     //     lastUpdated: 123456, //or undefined if never
-    //     startedUpdating: 123456, //or undefined if done
+    //     startedUpdating: 123456, //or undefined if done updating
     // }
 }
 
@@ -620,8 +695,8 @@ async function update_emote_cache(channel) {
 
 async function update_emote_cache_if_needed(channel) {
     const now = + new Date();
-    const lastUpdated = emote_cache[channel]?.lastUpdated || 0;
-    const startedUpdating = emote_cache[channel]?.startedUpdating || 0;
+    const lastUpdated = emote_cache[channel]?.lastUpdated ?? 0;
+    const startedUpdating = emote_cache[channel]?.startedUpdating ?? 0;
     console.log('[emotes] emote cache status:', channel, now, lastUpdated, EMOTE_CACHE_TIME, startedUpdating, EMOTE_RETRY_TIME);
     if (now > lastUpdated + EMOTE_CACHE_TIME && now > startedUpdating + EMOTE_RETRY_TIME) {
         await update_emote_cache(channel);
@@ -632,7 +707,7 @@ function find_3rd_party_emotes(channel, msg) {
     update_emote_cache_if_needed(channel); //this update will run in the background and will not help for this time
     const emotes = {};
     let pos = 0;
-    const emote_lookup = emote_cache[channel]?.emotes || emote_cache[undefined]?.emotes || {}; //emote_cache[undefined] is the global cache
+    const emote_lookup = emote_cache[channel]?.emotes ?? emote_cache[undefined]?.emotes ?? {}; //emote_cache[undefined] is the global cache
     msg.split(' ').forEach(word => {
         // console.log(word, pos);
         if (emote_lookup[word]) {
@@ -725,7 +800,7 @@ async function onMessageHandler(target, context, msg, self) {
     const nickname = await getViewerProperty(channel, 'nickname', username);
 
     //forward message to socket chat
-    send_chat(channel, username, nickname, context.color, msg, context.emotes);
+    send_chat(channel, username, nickname, context.color, msg, context.emotes, getPronouns(username));
 
     if (self) { return; } // Ignore messages from the bot
     const [valid_command, carl_command] = await handleCommand(target, context, msg, username);
@@ -835,11 +910,11 @@ async function handleCommand(target, context, msg, username) {
     var carl = false;
     // If the command is known, let's execute it
     if (command === '!help' || command === '!commands') {
-        twitch_try_say(target, `commands: !botpage - link to the page with nicknames and other info; !multichat - link to the combined youtube/twitch chat; !clear - clear the multichat; !setnickname - set your nickname; !nickname - view your nickname; !nickname user - view another user's nickname; !username nickname - look up who owns a nickname; !unsetnickname - delete your nickname`);
+        twitch_try_say(target, `commands: !botpage - link to the page with nicknames and other info; !multichat - link to the combined chat; !clear - clear the multichat; !setnickname - set your nickname; !nickname - view your nickname; !nickname user - view another user's nickname; !username nickname - look up who owns a nickname; !unsetnickname - delete your nickname`);
     } else if (command === '!botpage') {
         twitch_try_say(target, `see the nicknames and other bot info at ${process.env.BASE_URL}/${target}`);
     } else if (command === '!multichat') {
-        twitch_try_say(target, `see the multichat at ${process.env.BASE_URL}/chat?channel=${channel} and even add it as an OBS browser source`);
+        twitch_try_say(target, `see the multichat at ${process.env.BASE_URL}/chat?channel=${channel}&show_usernames=true&show_nicknames=true&show_pronouns=true and adjust the 'true' values to 'false' to hide the properties as desired`);
         // } else if (command === '!ytconnect') {
         //     if (has_permission(context)) {
         //         const result = await connect_to_youtube(channel);
@@ -1019,7 +1094,7 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
             const message = stringify(chat.message);
             console.log(`[youtube] [for twitch.tv/${channel}] ${author}: ${message}`);
             if (message !== undefined) {
-                send_chat(channel, author, undefined, undefined, message, undefined);
+                send_chat(channel, author, undefined, undefined, message, undefined, undefined);
                 const fwd_cmds_yt_twitch = await getChannelProperty(channel, 'fwd_cmds_yt_twitch');
                 fwd_cmds_yt_twitch.forEach(command => {
                     if (message.startsWith(command)) {
@@ -1152,7 +1227,7 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
                 const end = start + message.image.length - 1;
                 emotes = { [message.image]: [`${start}-${end}`] };
             }
-            send_chat(channel, name, undefined, color, text, emotes);
+            send_chat(channel, name, undefined, color, text, emotes, undefined);
         }
     }
 
@@ -1237,15 +1312,14 @@ setInterval(connect_to_all_owncasts, OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL);
 
 
 //start the http server
-server.listen(process.env.PORT || DEFAULT_PORT, () => {
-    console.log('listening on *:' + (process.env.PORT || DEFAULT_PORT));
+server.listen(process.env.PORT ?? DEFAULT_PORT, () => {
+    console.log('listening on *:' + (process.env.PORT ?? DEFAULT_PORT));
 });
 
 //===PRIORITY===
-//TODO migrate from json db to digitalocean spaces with separated files per channel at least
-//TODO function for super admin to import/export json
+//TODO function for super admin to import/export json for 1 channel or all
 //TODO test latency of DO spaces vs storj + minio
-//TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage
+//TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage and chat connections
 //TODO system to backup the data
 //TODO fix the profanity filter console.log(filter.clean("It smells like wrongdog in here.")) //???? like -> l***
 //TODO public dashboard page
@@ -1254,7 +1328,6 @@ server.listen(process.env.PORT || DEFAULT_PORT, () => {
 //TODO bot able to post on youtube
 
 //===EASY===
-//TODO replace || with ?? to prevent possible bugs, and test it
 //TODO args to !multichat command to change the link, and tell it in message
 //TODO link to source code on the page
 
