@@ -104,8 +104,9 @@ const BucketDB = require('./bucket-db');
 const bodyParser = require('body-parser')
 // var Filter = require('bad-words'),
 // filter = new Filter();
-var filter = require('profanity-filter');
-filter.seed('profanity');
+// var filter = require('profanity-filter');
+// filter.seed('profanity');
+var filter = require('leo-profanity');
 filter.isProfane = (s) => s !== filter.clean(s);
 
 const RANDOM_NICKNAMES_FILE = '/srv/random-nicknames.txt';
@@ -558,7 +559,6 @@ let possible_pronouns = {
     for (const item of data) {
         new_possible_pronouns[item.name] = item.display;
     }
-    console.log(JSON.stringify(possible_pronouns), JSON.stringify(new_possible_pronouns));
     possible_pronouns = new_possible_pronouns;
     console.log('[pronouns] fetched pronoun list of length', Object.keys(new_possible_pronouns).length);
 })();
@@ -595,7 +595,6 @@ async function update_pronoun_cache_if_needed(username) {
 }
 
 function getPronouns(username) {
-    console.log(pronoun_cache)
     update_pronoun_cache_if_needed(username); //this update will run in the background and will not help for this time
     return pronoun_cache[username]?.pronouns;
 }
@@ -1318,10 +1317,11 @@ server.listen(process.env.PORT ?? DEFAULT_PORT, () => {
 
 //===PRIORITY===
 //TODO function for super admin to import/export json for 1 channel or all
+//TODO play audio thru multichat page, or separate alerts page
+//TODO able to enable by typing !enable/!disable in the bot's twitch chat  opts.channels.push(process.env.TWITCH_BOT_USERNAME);
 //TODO test latency of DO spaces vs storj + minio
 //TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage and chat connections
 //TODO system to backup the data
-//TODO fix the profanity filter console.log(filter.clean("It smells like wrongdog in here.")) //???? like -> l***
 //TODO public dashboard page
 //TODO keep track of version and if mismatch, send reload request
 //TODO auto reload if popout chat or public dashboard page, otherwise ask to reload
