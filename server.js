@@ -1,5 +1,4 @@
 const DEFAULT_PORT = 8080;
-const JSON_DB_FILE = '/srv/data.json';
 const SECRETS_FILE = '/srv/secret.env';
 const CHAT_HISTORY_LENGTH = 100;
 const chat_history = {};
@@ -92,7 +91,7 @@ const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { EmoteFetcher } = require('@mkody/twitch-emoticons');
 const { fetchLivePage } = require('./node_modules/youtube-chat/dist/requests'); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
-const { Masterchat, stringify } = require('masterchat'); //youtube chat https://github.com/sigvt/masterchat
+const { Masterchat, stringify } = require('@stu43005/masterchat'); //youtube chat https://www.npmjs.com/package/@stu43005/masterchat
 const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
@@ -276,7 +275,18 @@ function channel_auth_middleware(req, res, next) {
         console.log('auth success', req.body, login, is_super_admin(login));
         next();
     } else {
-        console.error('access denied', req.body);
+        console.error('access denied', req.body, login, is_super_admin(login));
+        res.status(403).end(); //403 Forbidden
+    }
+}
+
+function super_admin_auth_middleware(req, res, next) {
+    const login = req.session?.passport?.user?.login;
+    if (is_super_admin(login)) {
+        console.log('auth success', req.body, login, is_super_admin(login));
+        next();
+    } else {
+        console.error('access denied', req.body, login, is_super_admin(login));
         res.status(403).end(); //403 Forbidden
     }
 }
@@ -306,6 +316,10 @@ function validate_middleware(param_name, param_types, validator = undefined) {
         }
     }
 }
+
+app.get('/carl_history', super_admin_auth_middleware, async (req, res) => {
+    res.send(JSON.stringify(carl_history));
+});
 
 const enabled_timeouts = {
     // 'channel': new Date(),
@@ -802,12 +816,12 @@ async function onMessageHandler(target, context, msg, self) {
     send_chat(channel, username, nickname, context.color, msg, context.emotes, getPronouns(username));
 
     if (self) { return; } // Ignore messages from the bot
-    const [valid_command, carl_command] = await handleCommand(target, context, msg, username);
+    const [valid_command, should_reply] = await handleCommand(target, context, msg, username);
 
     //keep track of when the last message was
     if (username.toLowerCase() !== process.env.TWITCH_BOT_USERNAME.toLowerCase()) {
         if (nickname !== undefined) {
-            if (!carl_command) { //carl already replies, no need for double
+            if (should_reply) {
                 const lastSeen = (lastSeens[channel] ?? {})[username];
                 const now = + new Date();
                 console.log('[greetz]', username, now - lastSeen);
@@ -905,8 +919,8 @@ async function handleCommand(target, context, msg, username) {
     const command = msg.replaceAll(' 󠀀', '').trim();
     const channel = target.replace('#', '');
 
-    var valid = true;
-    var carl = false;
+    let valid = true;
+    let should_reply = true;
     // If the command is known, let's execute it
     if (command === '!help' || command === '!commands') {
         twitch_try_say(target, `commands: !botpage - link to the page with nicknames and other info; !multichat - link to the combined chat; !clear - clear the multichat; !setnickname - set your nickname; !nickname - view your nickname; !nickname user - view another user's nickname; !username nickname - look up who owns a nickname; !unsetnickname - delete your nickname`);
@@ -929,6 +943,7 @@ async function handleCommand(target, context, msg, username) {
         if (has_permission(context)) {
             clear_chat(channel);
             update_emote_cache(channel);
+            should_reply = false;
         }
     } else if (command === '!nickname') { //retrieve the nickname of the user who typed it
         twitch_try_say(target, await getNicknameMsg(channel, username));
@@ -978,7 +993,7 @@ async function handleCommand(target, context, msg, username) {
             updateChatHistory(channel);
             twitch_try_say(target, `@${username} set nickname to ${nickname}`);
         }
-    } else if (command.includes(`@${process.env.TWITCH_BOT_USERNAME}`) || command.includes(`@${process.env.TWITCH_BOT_USERNAME}`.toLowerCase())) {
+    } else if (username.toLowerCase() !== 'nightbot' && command.toLowerCase().includes(`@${process.env.TWITCH_BOT_USERNAME}`.toLowerCase())) {
         const message = command
             .replaceAll(` @${process.env.TWITCH_BOT_USERNAME} `, '')
             .replaceAll(` @${process.env.TWITCH_BOT_USERNAME} `.toLowerCase(), '')
@@ -995,7 +1010,7 @@ async function handleCommand(target, context, msg, username) {
             const carl_said = carl_history[reply_parent];
             if (carl_said) {
                 url = 'https://games.johanv.net/carl_api?carl=' + encodeURIComponent(carl_said) + '&user=' + encodeURIComponent(message);
-                console.log(`[bot] found reply parent in carl_history: "${reply_parent}" => ${carl_said}`);
+                console.log(`[bot] found reply parent in carl_history: "${reply_parent}" => "${carl_said}"`);
             }
         }
         const response = await fetch(url);
@@ -1008,18 +1023,24 @@ async function handleCommand(target, context, msg, username) {
                 display_data = data.replaceAll('CARL', nickname).replaceAll('Carl', nickname).replaceAll('carl', nickname);
                 console.log('[bot] CARL (edited): ', display_data);
             }
-            if (filter.isProfane(display_data) || display_data.toLowerCase().includes('stupid') || display_data.toLowerCase().includes('dumb') || display_data.toLowerCase().includes('idiot')) {
+            let save_to_history = true;
+            if (filter.isProfane(display_data) || display_data.toLowerCase().includes('stupid') || display_data.toLowerCase().includes('stoopid') || display_data.toLowerCase().includes('dumb') || display_data.toLowerCase().includes('idiot')) {
                 display_data = `<3`;
+                save_to_history = false;
             }
             const reply = `@${username} ${display_data}`
             twitch_try_say(target, reply);
-            carl_history[reply] = data;
-            console.log(`[bot] saved to carl_history: "${reply}" => "${data}"`);
+            if (save_to_history) {
+                carl_history[reply] = data;
+                console.log(`[bot] saved to carl_history: "${reply}" => "${data}"`);
+            } else {
+                console.log(`[bot] not saving to carl_history: "${reply}" => "${data}"`);
+            }
         } else {
             console.log('[bot] error', response.status, data);
             twitch_try_say(target, `@${username} hey <3`);
         }
-        carl = true;
+        should_reply = false;
     } else {
         valid = false;
         console.log(`[bot] Unknown command: ${command}`);
@@ -1028,7 +1049,7 @@ async function handleCommand(target, context, msg, username) {
     if (valid) {
         console.log(`[bot] Executed command: ${command}`);
     }
-    return [valid, carl];
+    return [valid, should_reply];
 
 }
 
@@ -1316,15 +1337,16 @@ server.listen(process.env.PORT ?? DEFAULT_PORT, () => {
 });
 
 //===PRIORITY===
+//TODO keep track of version and if mismatch, send reload request
+//TODO auto reload if popout chat or public dashboard page, otherwise ask to reload
+//TODO public dashboard page
+//TODO channel point redeems, bits, subs, etc.
 //TODO function for super admin to import/export json for 1 channel or all
 //TODO play audio thru multichat page, or separate alerts page
 //TODO able to enable by typing !enable/!disable in the bot's twitch chat  opts.channels.push(process.env.TWITCH_BOT_USERNAME);
 //TODO test latency of DO spaces vs storj + minio
 //TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage and chat connections
 //TODO system to backup the data
-//TODO public dashboard page
-//TODO keep track of version and if mismatch, send reload request
-//TODO auto reload if popout chat or public dashboard page, otherwise ask to reload
 //TODO bot able to post on youtube
 
 //===EASY===
@@ -1347,7 +1369,6 @@ server.listen(process.env.PORT ?? DEFAULT_PORT, () => {
 //TODO clear chat automatically?
 //TODO remove deleted messages (timeouts, bans, individually deleted messages)
 //TODO better UI for greetz threshold
-//TODO maybe dont save to carl history if replaced with <3
 //TODO bot respond to alerts
 //TODO separate vip chat
 //TODO commands in the bot's chat to play videos on the 24/7 stream

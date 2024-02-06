@@ -10,6 +10,7 @@
     "dependencies": {
         "@aws-sdk/client-s3": "^3.484.0",
         "@mkody/twitch-emoticons": "^2.8.4",
+        "@stu43005/masterchat": "^1.2.2",
         "@types/node": "^14.11.8",
         "body-parser": "^1.20.2",
         "color-hash": "^1.1.1",
@@ -18,7 +19,6 @@
         "express-session": "^1.17.3",
         "handlebars": "^4.7.8",
         "leo-profanity": "^1.7.0",
-        "masterchat": "^1.1.0",
         "node-json-db": "^2.3.0",
         "passport": "^0.6.0",
         "passport-oauth": "^1.0.0",
