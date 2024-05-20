@@ -19,6 +19,7 @@ const DEFAULT_BOT_NICKNAME = '🤖';
 const YOUTUBE_MAX_MESSAGE_AGE = 10 * 1000; //10 seconds
 const YOUTUBE_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
 const OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL = 1 * 60 * 1000; //1 minute
+const KICK_CHECK_FOR_LIVESTREAM_INTERVAL    = 1 * 60 * 1000; //1 minute
 const EMOTE_STARTUP_DELAY = 2 * 60 * 1000; //2 minutes
 const EMOTE_CACHE_TIME = 1 * 60 * 60 * 1000; //1 hour
 const EMOTE_RETRY_TIME = 30 * 1000; //30 seconds
@@ -92,6 +93,7 @@ const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { EmoteFetcher } = require('@mkody/twitch-emoticons');
 const { fetchLivePage } = require('./node_modules/youtube-chat/dist/requests'); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
 const { Masterchat, stringify } = require('@stu43005/masterchat'); //youtube chat https://www.npmjs.com/package/@stu43005/masterchat
+const { Events, Kient } = require('kient'); //kick chat https://www.npmjs.com/package/kient
 const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
@@ -424,6 +426,28 @@ app.post('/owncast_url', jsonParser, channel_auth_middleware, validate_middlewar
     if (old_owncast_url !== owncast_url) {
         await setChannelProperty(channel, 'owncast_url', owncast_url);
         connect_to_owncast(channel);
+    }
+    res.end();
+});
+app.get('/kick_username', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'kick_username')) });
+app.post('/kick_username', jsonParser, channel_auth_middleware, validate_middleware('kick_username', 'string'), async (req, res) => {
+    const channel = req.body.channel;
+    const kick_username = req.body.kick_username;
+    const old_kick_username = await getChannelProperty(channel, 'kick_username');
+    if (old_kick_username !== kick_username) {
+        await setChannelProperty(channel, 'kick_username', kick_username);
+        connect_to_kick(channel);
+    }
+    res.end();
+});
+app.get('/kick_chatroom_id', async (req, res) => { res.send(await getChannelProperty(req.query.channel, 'kick_chatroom_id')) });
+app.post('/kick_chatroom_id', jsonParser, channel_auth_middleware, validate_middleware('kick_chatroom_id', 'string'), async (req, res) => {
+    const channel = req.body.channel;
+    const kick_chatroom_id = req.body.kick_chatroom_id;
+    const old_kick_chatroom_id = await getChannelProperty(channel, 'kick_chatroom_id');
+    if (old_kick_chatroom_id !== kick_chatroom_id) {
+        await setChannelProperty(channel, 'kick_chatroom_id', kick_chatroom_id);
+        connect_to_kick(channel);
     }
     res.end();
 });
@@ -1329,6 +1353,82 @@ async function connect_to_all_owncasts() {
 
 //periodically attempt to connect to owncast chats
 setInterval(connect_to_all_owncasts, OWNCAST_CHECK_FOR_LIVESTREAM_INTERVAL);
+
+
+//kick chat stuff
+const kick_chats = {
+    // 'jjvanvan': { 
+    //     kick_chatroom_id: 'JJVanVan',
+    //     listener: ???,
+    // }
+};
+
+async function disconnect_from_kick(channel) { //channel is a twitch channel
+    if (kick_chats[channel]) {
+        kick_chats[channel].listener._wsClient.pusher.disconnect();
+        delete kick_chats[channel];
+    }
+}
+
+async function connect_to_kick(channel) { //channel is a twitch channel
+    disconnect_from_kick(channel);
+    const kick_chatroom_id = await getChannelProperty(channel, 'kick_chatroom_id');
+    if (!kick_chatroom_id) {
+        console.error('[kick] no kick username associated with twitch channel ' + channel);
+        return 'no url';
+    }
+
+    const onErrorOrClose = () => {
+        disconnect_from_kick(channel);
+    }
+
+    const onMessageReceived = (message) => {
+        const messagedata = message.data;
+        console.log(`[kick] [for twitch.tv/${channel}] ${JSON.stringify(messagedata)}`);
+        const username = messagedata.sender.username;
+        const color = messagedata.sender.identity.color;
+        const content = messagedata.content;
+        //forward message to socket chat
+        send_chat(channel, username, undefined, color, content, undefined, undefined);
+    }
+
+    try {
+        const kick_client = await Kient.create();
+        // const kick_channel = await kick_client.api.channel.getChannel(kick_chatroom_id);
+        await kick_client.ws.chatroom.listen(kick_chatroom_id);
+
+        kick_client.on(Events.Chatroom.Message, onMessageReceived);
+
+        kick_client.on(Events.Core.WebSocketDisconnected, (err) => {
+            console.log('[kick] disconnected', kick_chatroom_id, err);
+            onErrorOrClose();
+        });
+
+        kick_chats[channel] = {
+            kick_chatroom_id: kick_chatroom_id,
+            listener: kick_client
+        };
+        console.log('[kick] connected to chat', kick_chatroom_id);
+    } catch (err) {
+        console.error('[kick] error', kick_chatroom_id, err);
+        onErrorOrClose();
+    }
+    return '';
+}
+
+async function connect_to_all_kicks() {
+    console.log('[kick] attempting to connect to all kick chats');
+    (await getChannels()).enabled_channels.forEach(async channel => {
+        if (kick_chats[channel]) {
+            console.log('[kick] already connected to kick live chat for twitch channel ' + channel);
+        } else {
+            connect_to_kick(channel);
+        }
+    });
+}
+
+//periodically attempt to connect to kick chats
+setInterval(connect_to_all_kicks, KICK_CHECK_FOR_LIVESTREAM_INTERVAL);
 
 
 //start the http server

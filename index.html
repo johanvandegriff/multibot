@@ -223,6 +223,14 @@
                         <button @click="check_owncast_status">check owncast chat status</button>
                     </p>
                     <p>
+                        enter kick username: <input type="text" v-model="kick_input" />
+                        <button @click="kick_connect">connect</button>
+                        <span v-if="kick_chatroom_id && kick_chatroom_id.length > 0">(kick connected:
+                            <a :href="'https://kick.com/' + kick_username">[[ kick_username ]] ([[ kick_chatroom_id ]])</a>)
+                            <button @click="kick_disconnect">disconnect</button>
+                        </span>
+                    </p>
+                    <p>
                         <button @click="check_emotes_status">check 3rd party emotes status</button>
                         <button @click="clear_chat">clear chat</button>
                     </p>
@@ -388,6 +396,9 @@
                     youtube_id: '',
                     owncast_input: '',
                     owncast_url: '',
+                    kick_input: '',
+                    kick_chatroom_id: '',
+                    kick_username: '',
                     fwd_cmds_yt_twitch: [],
                     new_cmd: '',
                     is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
@@ -630,6 +641,53 @@
                 owncast_disconnect() {
                     this.set_owncast_url('');
                 },
+                get_kick_chatroom_id() {
+                    fetch('/kick_chatroom_id?channel=' + encodeURIComponent(this.channel))
+                        .then(res => res.text())
+                        .then(json => this.kick_chatroom_id = json);
+                },
+                get_kick_username() {
+                    fetch('/kick_username?channel=' + encodeURIComponent(this.channel))
+                        .then(res => res.text())
+                        .then(json => this.kick_username = json);
+                },
+                sanatize_kick_username(kick_username) {
+                    if (kick_username.startsWith('http://')) {
+                        kick_username = kick_username.replace('http://', '');
+                    }
+                    if (kick_username.startsWith('https://')) {
+                        kick_username = kick_username.replace('https://', '');
+                    }
+                    if (kick_username.startsWith('kick.com/')) {
+                        kick_username = kick_username.replace('kick.com/', '');
+                    }
+                    return kick_username;
+                },
+                async convert_kick_username_to_chatroom_id(kick_username) {
+                    const res = await fetch('https://kick.com/api/v2/channels/' + kick_username);
+                    return '' + (await res.json()).chatroom.id;
+                },
+                async set_kick_chatroom_id(kick_chatroom_id) {
+                    const res = await fetch_post('/kick_chatroom_id', { channel: this.channel, kick_chatroom_id: kick_chatroom_id });
+                    if (res.status === 200) {
+                        this.kick_chatroom_id = kick_chatroom_id;
+                    }
+                },
+                async set_kick_username(kick_username) {
+                    const res = await fetch_post('/kick_username', { channel: this.channel, kick_username: kick_username });
+                    if (res.status === 200) {
+                        this.kick_username = kick_username;
+                    }
+                },
+                async kick_connect() {
+                    const kick_username = this.sanatize_kick_username(this.kick_input);
+                    this.set_kick_username(kick_username);
+                    this.set_kick_chatroom_id(await this.convert_kick_username_to_chatroom_id(kick_username));
+                },
+                kick_disconnect() {
+                    this.set_kick_username('');
+                    this.set_kick_chatroom_id('');
+                },
                 send_cmds() {
                     fetch_post('/fwd_cmds_yt_twitch', { channel: this.channel, fwd_cmds_yt_twitch: this.fwd_cmds_yt_twitch });
                 },
@@ -755,6 +813,8 @@ ${JSON.stringify(json, undefined, 2)}`);
                             .then(json => this.nicknames = json);
                         this.get_youtube_id();
                         this.get_owncast_url();
+                        this.get_kick_chatroom_id();
+                        this.get_kick_username();
                         this.connect_to_socket_chat();
                         fetch('/fwd_cmds_yt_twitch?channel=' + encodeURIComponent(this.channel))
                             .then(res => res.json())
