@@ -91,7 +91,7 @@ const WebSocketClient = require('websocket').client;
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
 const { EmoteFetcher } = require('@mkody/twitch-emoticons');
-const { fetchLivePage } = require('./node_modules/youtube-chat/dist/requests'); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
+// const { fetchLivePage } = require('./node_modules/youtube-chat/dist/requests'); //get youtube live url by channel id https://github.com/LinaTsukusu/youtube-chat
 const { Masterchat, stringify } = require('@stu43005/masterchat'); //youtube chat https://www.npmjs.com/package/@stu43005/masterchat
 const { Events, Kient } = require('kient'); //kick chat https://www.npmjs.com/package/kient
 const fs = require('fs');
@@ -1085,12 +1085,48 @@ async function clear_chat(channel) {
 
 
 //youtube chat stuff
-async function getLiveVideoId(youtube_id) {
+function searchAllJSON(json, key) {
+    let results = [];
+    function recursiveSearch(obj) {
+        if (obj.hasOwnProperty(key)) {
+            results.push(obj[key]);
+        }
+        for (let k in obj) {
+            if (obj[k] && typeof obj[k] === 'object') {
+                recursiveSearch(obj[k]);
+            }
+        }
+    }
+    recursiveSearch(json);
+    return results;
+}
+
+async function getYtInitialData(youtube_id, sub_url = '') {
+    const url = `https://www.youtube.com/channel/${youtube_id}/${sub_url}`;
+    const data = await (await fetch(url)).text(); // the entire webpage text
+    return JSON.parse(data.match(/var ytInitialData = ([^;]*);/)[1]); //match the var definition then parse the json of it's contents
+}
+
+async function getYoutubeLiveVideoIds(youtube_id) {
+    const data = await getYtInitialData(youtube_id, 'streams');
+    const live_vids = [];
+    searchAllJSON(data, 'videoRenderer').forEach(videoData => {
+        for (const i in (videoData.thumbnailOverlays ?? [])) {
+            if (videoData.thumbnailOverlays[i].thumbnailOverlayTimeStatusRenderer?.style == 'LIVE') {
+                live_vids.push(videoData.videoId);
+            }
+        }
+    });
+    return live_vids;
+}
+
+async function getYoutubeLiveVideoId(youtube_id) {
     try {
-        return (await fetchLivePage({ channelId: youtube_id })).liveId;
+        // return (await fetchLivePage({ channelId: youtube_id })).liveId; // the "youtube-chat" node module's "fetchLivePage" is broken
+        return (await getYoutubeLiveVideoIds(youtube_id))[0];
     } catch (error) {
         // console.error(error);
-        return '';
+        return undefined;
     }
 }
 
@@ -1116,9 +1152,9 @@ async function connect_to_youtube(channel) { //channel is a twitch channel
         return 'no id';
     }
 
-    const liveVideoId = await getLiveVideoId(youtube_id);
+    const liveVideoId = await getYoutubeLiveVideoId(youtube_id);
     console.log(`[youtube] channel: ${channel} youtube_id: ${youtube_id} liveVideoId: ${liveVideoId}`);
-    if (liveVideoId === '') {
+    if (liveVideoId === undefined) {
         console.error('[youtube] falied to find livestream');
         return 'no live';
     }
@@ -1278,7 +1314,6 @@ async function connect_to_owncast(channel) { //channel is a twitch channel
     try {
         // process.env.TWITCH_BOT_USERNAME DEFAULT_BOT_NICKNAME
 
-        // const liveVideoId = await getLiveVideoId(youtube_id);
         const res = await fetch('https://' + owncast_url + '/api/chat/register', {
             method: 'POST',
             headers: {
