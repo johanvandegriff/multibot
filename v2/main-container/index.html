@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>JJBotBot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <h1>JJBotBot</h1>
+        home
+        <span v-for="c in channels">| <a :href="'/' + c">[[c]]</a></span>
+        <div id="login">
+            <span v-if="loggedIn">
+                logged in as: [[display_name]]
+                <!-- <img :src="profile_image_url" /> -->
+                <a href="/log-out">log out</a>
+            </span>
+            <span v-else>
+                for streamers:
+                <a href="/twitch-auth">log in</a>
+            </span>
+        </div>
+    </div>
+
+    <script src="/vue.js"></script>
+
+    <script type="module">
+        const { createApp, ref } = Vue
+
+        createApp({
+            delimiters: ['[[', ']]'],
+            data() {
+                return {
+                    channels: '{{channels}}'.split(','),
+                    accessToken: '{{user.accessToken}}',
+                    refreshToken: '{{user.refreshToken}}',
+                    display_name: '{{user.display_name}}',
+                    login: '{{user.login}}',
+                    loggedIn: '{{user.login}}' !== '',
+                    profile_image_url: '{{user.profile_image_url}}',
+                }
+            },
+            methods: {
+                compute_color(text) {
+                    return '';
+                },
+            },
+            mounted() {
+            },
+            watch: {
+                login(new_channel, old_channel) {
+                },
+            },
+            // computed: {
+            //     dropdown_channels() {
+            //         return [];
+            //     }
+            // }
+        }).mount('#app')
+    </script>
+</body>
+
+</html>

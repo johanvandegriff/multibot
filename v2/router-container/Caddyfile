@@ -1,0 +1,11 @@
+{
+        email {env.EMAIL_ADDRESS}
+}
+
+http://*.*.*.*, http://localhost {
+        route {
+                reverse_proxy /jjvanvan* tenant-container-jjvanvan:8080
+                reverse_proxy /minecraft1167890* tenant-container-minecraft1167890:8080
+        }
+        reverse_proxy main-container:8080
+}

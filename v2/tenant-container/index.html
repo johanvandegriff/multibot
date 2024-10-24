@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>JJBotBot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <h1>JJBotBot</h1>
+        <a href="/">home</a>
+        <span v-for="c in channels">| <span v-if="c === channel">[[c]]</span><a v-else :href="'/' + c">[[c]]</a></span>
+        <div id="login">
+            <span v-if="loggedIn">
+                logged in as: [[display_name]]
+                <!-- <img :src="profile_image_url" /> -->
+                <a href="/log-out?returnTo={{channel}}">log out</a>
+            </span>
+            <span v-else>
+                for streamers:
+                <a href="/twitch-auth">log in</a>
+            </span>
+        </div>
+        <div>
+            <h2>nicknames</h2>
+            <ul>
+                <li v-for="username in Object.keys(chatters)">
+                    <button @click="edit_chatter(username)">✎</button>
+                    [[chatters[username].nickname]] = [[username]]
+                    <button>custom greetz: [[chatters[username].custom_greetz]]</button>
+                </li>
+                <li><button @click="add_chatter">&nbsp; + &nbsp;</button></li>
+            </ul>
+        </div>
+        <div>
+            <h2>chat</h2>
+            <ul>
+                <li v-for="msg in chat">[[msg.username]]: [[msg.text]]</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="/{{channel}}/vue.js"></script>
+    <!-- <script src="/color-hash.js"></script> -->
+
+    <script type="module">
+        // import { getEmoteAsUrl, parseEmotesInMessage } from '/tmi-utils/index.js';
+        async function fetch_post(url, data) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data),
+            });
+            if (res.status === 403) {
+                alert('access denied, please copy your work and refresh the page');
+            } else if (res.status !== 200) {
+                alert(`unknown error ${res.status} "${await res.text()}" when calling ${url}`);
+            }
+            return res;
+        }
+
+        const { createApp, ref } = Vue
+
+        createApp({
+            delimiters: ['[[', ']]'],
+            data() {
+                return {
+                    channel: '{{channel}}',
+                    channels: '{{channels}}'.split(','),
+                    accessToken: '{{user.accessToken}}',
+                    refreshToken: '{{user.refreshToken}}',
+                    display_name: '{{user.display_name}}',
+                    login: '{{user.login}}',
+                    loggedIn: '{{user.login}}' !== '',
+                    profile_image_url: '{{user.profile_image_url}}',
+                    chat: [],
+                    chatters: {},
+                }
+            },
+            methods: {
+                add_chatter() {
+                    const username = prompt('enter the username');
+                    this.chatters[username] = {};
+                    this.edit_chatter(username);
+                },
+                edit_chatter(username) {
+                    const nickname = prompt('enter a new nickname');
+                    this.chatters[username].nickname = nickname;
+                    fetch_post(`/${this.channel}/chatters/${username}/nickname/${nickname}`);
+                },
+                websocket_connect() {
+                    const ws = new WebSocket(`ws://${window.document.location.host}/{{channel}}`);
+                    ws.binaryType = "blob";
+                    // Log socket opening and closing
+                    ws.addEventListener("open", event => {
+                        console.log("Websocket connection opened");
+                        ws.send('hello from client');
+                    });
+                    ws.addEventListener("close", event => {
+                        console.log("Websocket connection closed");
+                        setTimeout(this.websocket_connect, 5000);
+                    });
+                    ws.onmessage = this.websocket_msg;
+                },
+                websocket_msg(message) {
+                    console.log("chat: " + message.data);
+                    this.chat.push(JSON.parse(message.data));
+                },
+            },
+            mounted() {
+                this.websocket_connect();
+                fetch('/{{channel}}/chatters')
+                    .then(res => res.json())
+                    .then(json => this.chatters = json);
+                // this.$nextTick(() => {
+                // });
+            },
+            watch: {
+                login(new_channel, old_channel) {
+                },
+            },
+            // computed: {
+            //     dropdown_channels() {
+            //         return [];
+            //     }
+            // }
+        }).mount('#app')
+    </script>
+</body>
+
+</html>

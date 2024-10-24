@@ -1,0 +1,142 @@
+PROOF OF CONCEPT:
++main page (on main container)
++links to each tenant on main page (view without logging in)
++login button on main page
++log in with twitch, session saved in state db, redirected to tenant page
++tenant page (on tenant container)
++see if u are logged in or not on tenant page
++router redirects sub-urls to tenant page
++see chat on tenant page
++nav bar with all the channels, and home
+    +store the list of channels in redis
+    +make the nav bar programmatic
+    +gray out the nav bar item you are on currently
++nicknames shown on admin page
++add/edit nicknames on admin page
+    +add authentication to setting nicknames
+
++only twitch chat for now
++manually create tenant containers for now
++hardcoded to 2 tenant containers to start
++no k8s (docker-compose for now)
+
++make a README for the proof of concept
++clean up code
++commit the code
+
+
+Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
+
+EXISTING FEATURES:
++twitch authentication (need to split between containers and store sessions in state DB)
+channel and viewer properties system
+emotes from twitch, BTTV, FFZ, 7TV (global and channel)
+pronouns from alejo
+CARL chatbot responds when @'ed, except by other bots (remove for now, need to revamp)
+user can set nickname
+random nickname if none provided
+bot greets users by nickname, timeout for welcome and welcome back
+custom greeting for a chatter
+option to show/hide usernames,nicknames,pronouns,background in chat
+easy sign up
+enable/disable the bot on your channel
+timeout on enabling/disabling the bot to avoid spam
+get list of channels that have a tenant container
+get list of channels that have the bot enabled
++authentication on the data APIs to only work for the specific channel
++nicknames
+forward selected youtube commands to twitch
++connect to twitch chat
+connect to youtube chat
+connect to owncast chat
+connect to kick chat
++send combined chat to frontend (socket.io or websockets)
+send events to frontend (nicknames, channel/viewer property changed, channel enabled/disabled)
+clear chat command and api
+find youtube id by url/username
+twitch mods have permission to access the streamer's settings page
+!help/!commands currently a static message
+!botpage -> link to full page
+!multichat -> link to multichat only
+!clear -> clear multichat page
+!nickname !username !unsetnickname !setnickname
+query a nickname/username with the other
+
+NEW FEATURES TO ADD:
+better logging (might come for free with tenant container docker logs)
+feature toggles
+handle display name being different language than username (e.g. porukun21) just check lowercase and if different, include username, unless nickname set (username becomes a defacto nickname)
+admin feature toggle to enable/disable signups
+option to pay for signups
+option to split or combine chats
+database backup and restore
+database editor
+permissions system (super admin, streamer, mods, etc.)
+maybe (prob not): should work if u dont have twitch (e.g. primary login with email)
+revamp CARL chatbot to be part of the system with moderation tools in place
+CARL should be its own container that autoscales
+option to read out the chat with TTS
+viewer can set custom pronouns that aren't on alejo
+timeout on signup/delete account to avoid spam
+make messages disappear after a timeout?
+bot greets users without a nickname
+onboarding tutorial/help button
+maybe: dedicated proxy containers for channel-independent tasks, e.g. pronoun/emote cache
+custom code system with DO functions? or app platform? need live connection for efficiency
+marketplace for plugins
+integrate popular plugins into main code
+change !nickname to !getnickname, and !setnickname to !nickname or !nick
+maybe: provide ollama URL and API key (for me, running locally on laptop GPU, confuzer in future)
+summary of youtube chat in twitch chat and vice versa? what about owncast and kick? maybe summarize all chats together and put in all chats
+fun stats on main page
+
+FROM PREVIOUS TODO:
+//===PRIORITY===
+//TODO keep track of version and if mismatch, send reload request
+//TODO auto reload if popout chat or public dashboard page, otherwise ask to reload
+//TODO public dashboard page
+//TODO channel point redeems, bits, subs, etc.
+//TODO function for super admin to import/export json for 1 channel or all
+//TODO play audio thru multichat page, or separate alerts page
+//TODO able to enable by typing !enable/!disable in the bot's twitch chat  opts.channels.push(process.env.TWITCH_BOT_USERNAME);
+//TODO test latency of DO spaces vs storj + minio
+//TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage and chat connections
+//TODO system to backup the data
+//TODO bot able to post on youtube
+
+//===EASY===
+//TODO args to !multichat command to change the link, and tell it in message
+//TODO link to source code on the page
+
+//===BUGS===
+//TODO failed to get chat messages after saying it was connected on the 1min timer
+//TODO bot missing username when enabled and already has youtube_id ": connected to youtube chat"
+//TODO bot keeps reconnecting to twitch chat, maybe every youtube check?
+
+//===REFACTOR===
+//TODO abstract out the sharing of state thru sockets?
+//TODO rethink the api paths to something like /api/channels/:channel/nicknames/:username etc.
+//TODO make it able to scale horizontally
+
+//TODO allow mods to use the admin page for the streamer
+//TODO give the bot "watching without audio/video" badge
+//TODO youtube emotes
+//TODO clear chat automatically?
+//TODO remove deleted messages (timeouts, bans, individually deleted messages)
+//TODO better UI for greetz threshold
+//TODO bot respond to alerts
+//TODO separate vip chat
+//TODO commands in the bot's chat to play videos on the 24/7 stream
+//TODO a way for super admin to call an api to get/set/delete anything in the database, for example delete last seen time
+//TODO twitch badges
+//TODO twitch /me
+//TODO twitch show replies
+//TODO do an actual reply instead of @'ing the user
+//TODO !songlist reply on youtube - You: !songlist Nightbot: @You -> The song list for this channel is available at https://nightbot.tv/t/streamer/song_requests
+//TODO when !songlist is typed on youtube, reply with `The song list for this channel is available at https://nightbot.tv/t/[channel]/song_requests`
+//TODO summary of youtube chat in twitch chat and vice versa? what about owncast? exponential combinatorics as more chats are added
+//TODO command forwarding from owncast to twitch?
+//TODO publish bucket-db as a npm package
+//TODO local s3 in docker with artificial delay time (& update README)
+//TODO optimize getting enabled channels, maybe store it in the bucket at /enabled, where an empty file named the channel means the channel is enabled, and no file means disabled
+

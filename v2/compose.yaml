@@ -1,0 +1,72 @@
+services:
+  caddy:
+    image: caddy
+    container_name: router-container
+    restart: unless-stopped
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
+    networks:
+      - botnet
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - $PWD/router-container/Caddyfile:/etc/caddy/Caddyfile
+      - $PWD/router-container/caddy-data:/data
+    environment:
+      - EMAIL_ADDRESS=${EMAIL_ADDRESS}
+
+  redis:
+    image: "redis:alpine"
+    container_name: state-db
+    command: redis-server --requirepass ${STATE_DB_PASSWORD}
+    networks:
+      - botnet
+    environment:
+      - REDIS_REPLICATION_MODE=master
+
+  main-container:
+    image: main-container
+    container_name: main-container
+    restart: unless-stopped
+    networks:
+      - botnet
+    environment:
+      - BASE_URL=${BASE_URL}
+      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
+      - TWITCH_SECRET=${TWITCH_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
+      - STATE_DB_URL=redis://state-db:6379
+
+  tenant-container-jjvanvan:
+    image: tenant-container
+    container_name: tenant-container-jjvanvan
+    restart: unless-stopped
+    networks:
+      - botnet
+    environment:
+      - TWITCH_CHANNEL=jjvanvan
+      - TWITCH_BOT_USERNAME=${TWITCH_BOT_USERNAME}
+      - TWITCH_BOT_OAUTH_TOKEN=${TWITCH_BOT_OAUTH_TOKEN}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
+      - STATE_DB_URL=redis://state-db:6379
+
+  tenant-container-minecraft1167890:
+    image: tenant-container
+    container_name: tenant-container-minecraft1167890
+    restart: unless-stopped
+    networks:
+      - botnet
+    environment:
+      - TWITCH_CHANNEL=minecraft1167890
+      - TWITCH_BOT_USERNAME=${TWITCH_BOT_USERNAME}
+      - TWITCH_BOT_OAUTH_TOKEN=${TWITCH_BOT_OAUTH_TOKEN}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
+      - STATE_DB_URL=redis://state-db:6379
+
+# docker network create botnet
+networks:
+  botnet:
+    external: true

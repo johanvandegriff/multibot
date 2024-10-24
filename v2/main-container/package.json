@@ -1,0 +1,23 @@
+{
+    "name": "multistream-bot",
+    "version": "0.0.1",
+    "description": "aggregate live chat from twitch, youtube, etc. and forward commands between as needed. https://botbot.jjv.sh",
+    "license": "AGPL-3.0-or-later",
+    "repository": {
+        "type": "git",
+        "url": "git://codeberg.org/johanvandegriff/multistream-bot.git"
+    },
+    "type": "module",
+    "dependencies": {
+        "connect-redis": "^7.1.1",
+        "express": "^4.21.1",
+        "express-session": "^1.18.1",
+        "fs": "^0.0.1-security",
+        "handlebars": "^4.7.8",
+        "passport": "^0.7.0",
+        "passport-oauth": "^1.0.0",
+        "redis": "^4.7.0",
+        "request": "^2.88.2",
+        "vue": "^3.5.12"
+    }
+}
