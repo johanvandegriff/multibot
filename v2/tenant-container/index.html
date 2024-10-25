@@ -14,6 +14,7 @@
         <a href="/">home</a>
         <span v-for="c in channels">| <span v-if="c === channel">[[c]]</span><a v-else :href="'/' + c">[[c]]</a></span>
         <div id="login">
+            <span v-if="is_super_admin" id="super_admin">SUPER ADMIN</span>
             <span v-if="loggedIn">
                 logged in as: [[display_name]]
                 <!-- <img :src="profile_image_url" /> -->
@@ -79,6 +80,7 @@
                     login: '{{user.login}}',
                     loggedIn: '{{user.login}}' !== '',
                     profile_image_url: '{{user.profile_image_url}}',
+                    is_super_admin: '{{is_super_admin}}' === 'true',
                     chat: [],
                     chatters: {},
                 }

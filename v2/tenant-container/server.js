@@ -1,8 +1,4 @@
-const DEFAULT_PORT = 8080;
-const PORT = process.env.PORT ?? DEFAULT_PORT;
-const TWITCH_CHANNEL = process.env.TWITCH_CHANNEL;
-const STATE_DB_PASSWORD = process.env.STATE_DB_PASSWORD;
-const STATE_DB_URL = process.env.STATE_DB_URL;
+const TWITCH_CHANNEL = process.env.TWITCH_CHANNEL; //the channel that this tenant container is set to operate on
 
 import tmi from 'tmi.js'; //twitch chat https://dev.twitch.tv/docs/irc
 
@@ -38,8 +34,8 @@ function broadcast(msg) {
 }
 
 const redis_client = redis.createClient({
-    url: STATE_DB_URL,
-    password: STATE_DB_PASSWORD
+    url: process.env.STATE_DB_URL,
+    password: process.env.STATE_DB_PASSWORD
 });
 
 redis_client.on('error', err => console.log('Redis Client Error', err));
@@ -67,45 +63,59 @@ app.use(session({
 }));
 // app.use(express.static('public'));
 
+function is_super_admin(username) {
+    return username?.toLowerCase() === process.env.TWITCH_SUPER_ADMIN_USERNAME.toLowerCase();
+}
 
 function channel_auth_middleware(req, res, next) {
     const login = req.session?.passport?.user?.login;
-    if (login === TWITCH_CHANNEL) { // || is_super_admin(login)) {
-        // console.log('auth success', req.body, login, is_super_admin(login));
+    if (login === TWITCH_CHANNEL || is_super_admin(login)) {
+        console.log('auth success', req.body, login, is_super_admin(login));
         next();
     } else {
-        // console.error('access denied', req.body, login, is_super_admin(login));
+        console.error('access denied', req.body, login, is_super_admin(login));
         res.status(403).end(); //403 Forbidden
     }
 }
 
-
+const router = express.Router();
 //expose js libraries to client so they can run in the browser
-app.use(`/${TWITCH_CHANNEL}/vue.js`, express.static('node_modules/vue/dist/vue.global.prod.js'));
+router.use('/vue.js', express.static('node_modules/vue/dist/vue.global.prod.js'));
 
 // Define a simple template to safely generate HTML with values from user's profile
 const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
-app.get(`/${TWITCH_CHANNEL}`, async function (req, res) { res.send(template({ channel: TWITCH_CHANNEL, channels: await redis_client.sMembers('channels'), user: req.session?.passport?.user })); });
-app.get(`/${TWITCH_CHANNEL}/chatters`, async function (req, res) {
+router.get('/', async function (req, res) {
+    const user = req.session?.passport?.user;
+    res.send(template({
+        channel: TWITCH_CHANNEL,
+        channels: await redis_client.sMembers('channels'),
+        is_super_admin: is_super_admin(user?.login),
+        user: user
+    }));
+});
+router.get('/chatters', async function (req, res) {
     const chatters = await redis_client.sMembers(`channels/${TWITCH_CHANNEL}/chatters`);
-    console.log('chatters:', chatters);
     const chatter_data = {};
     for (const chatter of chatters) {
         chatter_data[chatter] = await redis_client.hGetAll(`channels/${TWITCH_CHANNEL}/chatters/${chatter}`);
     }
-    console.log('chatter_data:', chatter_data);
     res.send(chatter_data);
 });
 
-app.post(`/${TWITCH_CHANNEL}/chatters/:username/nickname/:nickname`, channel_auth_middleware, async function (req, res) {
+router.post('/chatters/:username/nickname/:nickname', channel_auth_middleware, async function (req, res) {
     const username = req.params.username;
     const nickname = req.params.nickname;
     await redis_client.sAdd(`channels/${TWITCH_CHANNEL}/chatters`, username);
-    await redis_client.hSet(`channels/${TWITCH_CHANNEL}/chatters/${username}`, {'nickname': nickname});
+    await redis_client.hSet(`channels/${TWITCH_CHANNEL}/chatters/${username}`, { 'nickname': nickname });
     res.send('ok');
 });
+
+//mount all the routes with a prefix of /twitch_channel
+//for example: /chatters -> https://botbot.jjv.sh/jjvanvan/chatters
+app.use('/' + TWITCH_CHANNEL, router);
+
 
 function send_chat(channel, username, nickname, color, text, emotes, pronouns) {
     if (!emotes) {
@@ -140,35 +150,6 @@ function twitch_try_say(channel, message) {
     }
 }
 
-
-// Called every time the bot connects to Twitch chat
-function onConnectedHandler(addr, port) {
-    
-}
-// Called every time a message comes in
-async function onMessageHandler(target, context, msg, self) {
-    console.log(`[twitch] TARGET: ${target} SELF: ${self} CONTEXT: ${JSON.stringify(context)}`);
-    const username = context['display-name'];
-    console.log(`[twitch] ${username}: ${msg}`);
-    const channel = target.replace('#', '');
-
-    if (context['message-type'] === 'whisper') {
-        return; //ignore whispers
-    }
-
-    if (!username) {
-        console.error('[twitch] no username in message');
-        return; //ignore messages with no username
-    }
-
-    const nickname = undefined; //await getViewerProperty(channel, 'nickname', username);
-
-    //forward message to socket chat
-    send_chat(channel, username, nickname, context.color, msg, context.emotes, undefined); //getPronouns(username));
-}
-
-
-
 async function connectToTwitchChat() {
     if (tmi_client) {
         tmi_client.disconnect();
@@ -186,7 +167,26 @@ async function connectToTwitchChat() {
     tmi_client = new tmi.client(opts);
 
     // Register our event handlers (defined below)
-    tmi_client.on('message', onMessageHandler);
+    tmi_client.on('message', (target, context, msg, self) => {
+        console.log(`[twitch] TARGET: ${target} SELF: ${self} CONTEXT: ${JSON.stringify(context)}`);
+        const username = context['display-name'];
+        console.log(`[twitch] ${username}: ${msg}`);
+        const channel = target.replace('#', '');
+    
+        if (context['message-type'] === 'whisper') { //could be 'whisper', 'action' (for /me), or 'chat'
+            return; //ignore whispers
+        }
+    
+        if (!username) {
+            console.error('[twitch] no username in message:', JSON.stringify(context));
+            return; //ignore messages with no username
+        }
+    
+        const nickname = undefined; //await getViewerProperty(channel, 'nickname', username);
+    
+        //forward message to socket chat
+        send_chat(channel, username, nickname, context.color, msg, context.emotes, undefined); //getPronouns(username));
+    });
     tmi_client.on('connected', (addr, port) => console.log(`[twitch] connected to ${addr}:${port}`));
     // Connect to Twitch:
     tmi_client.connect().catch(error => console.error('[twitch] tmi connect error:', error));
@@ -197,6 +197,6 @@ async function connectToTwitchChat() {
 })();
 
 //start the http server
-server.listen(PORT, () => {
-    console.log('listening on *:' + PORT);
+server.listen(process.env.PORT ?? 80, () => {
+    console.log('listening on *:' + process.env.PORT ?? 80);
 });

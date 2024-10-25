@@ -24,10 +24,13 @@ PROOF OF CONCEPT:
 +clean up code
 +commit the code
 
-
+for consideration of using channel URLs directly, and having non-channel URLs be invalid usernames:
 Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
+need to make sure non-channel URLs contain a "-" or are 3 chars long, e.g. "/twitch-auth", "/log-out", "/new", "/api", etc.
 
 EXISTING FEATURES:
+decent looking UI
++super admin
 +twitch authentication (need to split between containers and store sessions in state DB)
 channel and viewer properties system
 emotes from twitch, BTTV, FFZ, 7TV (global and channel)

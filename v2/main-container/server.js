@@ -1,8 +1,3 @@
-const DEFAULT_PORT = 8080;
-const PORT = process.env.PORT ?? DEFAULT_PORT;
-const STATE_DB_PASSWORD = process.env.STATE_DB_PASSWORD;
-const STATE_DB_URL = process.env.STATE_DB_URL;
-
 import redis from 'redis';
 import http from 'http';
 import express from 'express';
@@ -22,8 +17,8 @@ const server = http.createServer(app);
 
 
 const redis_client = redis.createClient({
-    url: STATE_DB_URL,
-    password: STATE_DB_PASSWORD
+    url: process.env.STATE_DB_URL,
+    password: process.env.STATE_DB_PASSWORD
 });
 
 redis_client.on('error', err => console.log('Redis Client Error', err));
@@ -32,7 +27,6 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
     await redis_client.sAdd('channels', ['jjvanvan', 'minecraft1167890']); //TODO
     console.log('channels (hardcoded for now):', await redis_client.sMembers('channels'));
 })();
-
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 const CALLBACK_URL = process.env.BASE_URL + '/twitch-auth/callback';
@@ -99,7 +93,6 @@ passport.use('twitch', new OAuth2Strategy({
         user.display_name = profile.data[0].display_name;
         user.profile_image_url = profile.data[0].profile_image_url;
         user.created_at = profile.data[0].created_at;
-        // user.is_super_admin = is_super_admin(user.login);
         console.log(`[twitch] user "${user.login}" logged in to the web interface with twitch`);
         // console.log(user);
         done(null, user);
@@ -111,7 +104,6 @@ app.get('/twitch-auth', passport.authenticate('twitch', { scope: ['user_read'] }
 
 // Set route for OAuth redirect
 app.get('/twitch-auth/callback', passport.authenticate('twitch', { failureRedirect: '/' }), function (req, res) { res.redirect('/' + req.session?.passport?.user?.login) });
-// app.get('/twitch-auth/callback', function (req, res) { res.send(passport.authenticate('twitch', { successRedirect: '/' + req.session?.passport?.user?.login, failureRedirect: '/' })) });
 
 app.get('/log-out', function (req, res, next) {
     req.logout(function (err) {
@@ -129,8 +121,7 @@ const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 // If user has an authenticated session, display it, otherwise display link to authenticate
 app.get('/', async function (req, res) { res.send(template({ channels: await redis_client.sMembers('channels'), user: req.session?.passport?.user })); });
 
-
 //start the http server
-server.listen(PORT, () => {
-    console.log('listening on *:' + PORT);
+server.listen(process.env.PORT ?? 80, () => {
+    console.log('listening on *:' + process.env.PORT ?? 80);
 });
