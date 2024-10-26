@@ -4,8 +4,10 @@
 
 http://*.*.*.*, http://localhost {
         route {
-                reverse_proxy /jjvanvan* tenant-container-jjvanvan
-                reverse_proxy /minecraft1167890* tenant-container-minecraft1167890
+                reverse_proxy /jjvanvan tenant-container-jjvanvan
+                reverse_proxy /jjvanvan/* tenant-container-jjvanvan
+                reverse_proxy /minecraft1167890 tenant-container-minecraft1167890
+                reverse_proxy /minecraft1167890/* tenant-container-minecraft1167890
         }
         reverse_proxy main-container
 }

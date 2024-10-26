@@ -1,7 +1,6 @@
 services:
-  caddy:
+  router-container:
     image: caddy
-    container_name: router-container
     restart: unless-stopped
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
     networks:
@@ -15,18 +14,18 @@ services:
     environment:
       - EMAIL_ADDRESS=${EMAIL_ADDRESS}
 
-  redis:
+  state-db:
     image: "redis:alpine"
-    container_name: state-db
     command: redis-server --requirepass ${STATE_DB_PASSWORD}
     networks:
       - botnet
+    ports:
+      - 6379:6379
     environment:
       - REDIS_REPLICATION_MODE=master
 
   main-container:
     image: main-container
-    container_name: main-container
     restart: unless-stopped
     networks:
       - botnet
@@ -40,7 +39,6 @@ services:
 
   tenant-container-jjvanvan:
     image: tenant-container
-    container_name: tenant-container-jjvanvan
     restart: unless-stopped
     networks:
       - botnet
@@ -55,7 +53,6 @@ services:
 
   tenant-container-minecraft1167890:
     image: tenant-container
-    container_name: tenant-container-minecraft1167890
     restart: unless-stopped
     networks:
       - botnet

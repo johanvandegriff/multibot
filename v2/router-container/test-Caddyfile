@@ -1,0 +1,17 @@
+{
+        email {env.EMAIL_ADDRESS}
+        http_port 8000
+}
+
+http://*.*.*.*, http://localhost {
+        route {
+                reverse_proxy /jjvanvan localhost:8081
+                reverse_proxy /jjvanvan/* localhost:8081
+                reverse_proxy /minecraft1167890 localhost:8082
+                reverse_proxy /minecraft1167890/* localhost:8082
+
+                # @minecraft1167890 path_regexp minecraft ^/minecraft1167890(/.*|)$
+                # reverse_proxy @minecraft1167890 localhost:8082
+        }
+        reverse_proxy localhost:8080
+}

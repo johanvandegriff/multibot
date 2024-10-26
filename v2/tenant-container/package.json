@@ -9,14 +9,20 @@
     },
     "type": "module",
     "dependencies": {
+        "@mkody/twitch-emoticons": "^2.8.9",
+        "@stu43005/masterchat": "^1.4.7",
+        "color-hash": "^2.0.2",
         "connect-redis": "^7.1.1",
         "express": "^4.21.1",
         "express-session": "^1.18.1",
         "fs": "^0.0.1-security",
         "handlebars": "^4.7.8",
+        "kient": "^1.0.1-18",
+        "leo-profanity": "^1.7.0",
         "redis": "^4.7.0",
         "tmi-utils": "^1.0.1",
         "tmi.js": "^1.8.5",
-        "vue": "^3.5.12"
+        "vue": "^3.5.12",
+        "websocket": "^1.0.35"
     }
 }
