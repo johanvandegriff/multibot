@@ -465,7 +465,7 @@
                             m.nickname = msg.nickname;
                         }
                         return m;
-                    })
+                    });
                 },
                 socket_event(msg) {
                     console.log('event: ', msg);
@@ -709,7 +709,7 @@ isLive: ${json.listener?.isLive}`);
                     fetch('/owncast_status?channel=' + this.channel)
                         .then(res => res.json())
                         .then(json => {
-                            console.log('owncast_status', json); //TODO
+                            console.log('owncast_status', json);
                             alert(`Owncast Status:
 owncast_url: ${json.owncast_url}
 socket.servername: ${json.listener?.socket?.servername}
@@ -720,7 +720,7 @@ config.webSocketVersion: ${json.listener?.config?.webSocketVersion}`);
                     fetch('/emotes_status?channel=' + this.channel)
                         .then(res => res.json())
                         .then(json => {
-                            console.log('emotes_status', json); //TODO
+                            console.log('emotes_status', json);
                             alert(`Emotes Status:
 ${JSON.stringify(json, undefined, 2)}`);
                         });
@@ -827,7 +827,7 @@ ${JSON.stringify(json, undefined, 2)}`);
             //         return [];
             //     }
             // }
-        }).mount('#app')
+        }).mount('#app');
     </script>
 </body>
 

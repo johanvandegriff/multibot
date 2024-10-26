@@ -86,7 +86,7 @@ const GREETZ_WELCOME_BACK_ALSO = [
 ];
 
 const http = require('http');
-const https = require('https');
+// const https = require('https');
 const WebSocketClient = require('websocket').client;
 const dotenv = require('dotenv'); //for storing secrets in an env file
 const tmi = require('tmi.js'); //twitch chat https://dev.twitch.tv/docs/irc
@@ -102,7 +102,7 @@ const OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 const request = require('request');
 const handlebars = require('handlebars');
 const BucketDB = require('./bucket-db');
-const bodyParser = require('body-parser')
+const bodyParser = require('body-parser');
 // var Filter = require('bad-words'),
 // filter = new Filter();
 // var filter = require('profanity-filter');
@@ -120,7 +120,7 @@ try {
             RANDOM_NICKNAMES.push(line);
         }
     });
-    console.log(`loaded ${RANDOM_NICKNAMES.length} random nicknames`)
+    console.log(`loaded ${RANDOM_NICKNAMES.length} random nicknames`);
 } catch (err) {
     console.error('error reading ' + RANDOM_NICKNAMES_FILE);
 }
@@ -129,7 +129,7 @@ dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
 
 // Initialize Express and middlewares
 const app = express();
-const jsonParser = bodyParser.json()
+const jsonParser = bodyParser.json();
 const server = http.createServer(app);
 const io = require('socket.io')(server);
 
@@ -1002,7 +1002,7 @@ async function handleCommand(target, context, msg, username) {
         }
     } else if (command.startsWith('!setnickname ')) {
         const nickname = command.replace('!setnickname', '').trim();
-        const max_nickname_length = await getChannelProperty(channel, 'max_nickname_length')
+        const max_nickname_length = await getChannelProperty(channel, 'max_nickname_length');
         if (filter.isProfane(nickname)) {
             twitch_try_say(target, `@${username} no profanity allowed in nickname, use a different one or ask the streamer/admin to log in to the link at !botpage and set it for you`);
         } else if (await getViewerProperty(channel, 'nickname', username) === nickname) {
