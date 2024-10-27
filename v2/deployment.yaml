@@ -1,0 +1,310 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: state-db
+  labels:
+    app: state-db
+    logging: my_group
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: state-db
+  template:
+    metadata:
+      labels:
+        app: state-db
+        logging: my_group
+    spec:
+      containers:
+      - name: state-db
+        image: "redis:alpine"
+        command: ["redis-server", "--requirepass", "$(STATE_DB_PASSWORD)"]
+        env:
+        - name: STATE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: STATE_DB_PASSWORD
+        ports:
+        - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: state-db
+spec:
+  selector:
+    app: state-db
+  ports:
+  - protocol: TCP
+    port: 6379
+    targetPort: 6379
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: main-container-account
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: main-container
+  labels:
+    app: main-container
+    logging: my_group
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: main-container
+  template:
+    metadata:
+      labels:
+        app: main-container
+        logging: my_group
+    spec:
+      serviceAccountName: main-container-account
+      containers:
+      - name: main-container
+        image: main-container
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: BASE_URL
+        - name: TWITCH_SUPER_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SUPER_ADMIN_USERNAME
+        - name: TWITCH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_CLIENT_ID
+        - name: TWITCH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SECRET
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SESSION_SECRET
+        - name: STATE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: STATE_DB_PASSWORD
+        - name: STATE_DB_URL
+          value: "redis://state-db:6379"
+        ports:
+        - containerPort: 80
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: main-container
+spec:
+  selector:
+    app: main-container
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: read-pods
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader
+subjects:
+- kind: ServiceAccount
+  name: main-container-account
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-container-jjvanvan
+  labels:
+    app: tenant-container-jjvanvan
+    logging: my_group
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenant-container-jjvanvan
+  template:
+    metadata:
+      labels:
+        app: tenant-container-jjvanvan
+        logging: my_group
+    spec:
+      containers:
+      - name: tenant-container-jjvanvan
+        image: tenant-container
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: TWITCH_CHANNEL
+          value: "jjvanvan"
+        - name: TWITCH_BOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_BOT_USERNAME
+        - name: TWITCH_BOT_OAUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_BOT_OAUTH_TOKEN
+        - name: BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: BASE_URL
+        - name: TWITCH_SUPER_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SUPER_ADMIN_USERNAME
+        - name: TWITCH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_CLIENT_ID
+        - name: TWITCH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SECRET
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SESSION_SECRET
+        - name: STATE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: STATE_DB_PASSWORD
+        - name: STATE_DB_URL
+          value: "redis://state-db:6379"
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-container-jjvanvan
+spec:
+  selector:
+    app: tenant-container-jjvanvan
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-container-minecraft1167890
+  labels:
+    app: tenant-container-minecraft1167890
+    logging: my_group
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenant-container-minecraft1167890
+  template:
+    metadata:
+      labels:
+        app: tenant-container-minecraft1167890
+        logging: my_group
+    spec:
+      containers:
+      - name: tenant-container-minecraft1167890
+        image: tenant-container
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: TWITCH_CHANNEL
+          value: "minecraft1167890"
+        - name: TWITCH_BOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_BOT_USERNAME
+        - name: TWITCH_BOT_OAUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_BOT_OAUTH_TOKEN
+        - name: BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: BASE_URL
+        - name: TWITCH_SUPER_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SUPER_ADMIN_USERNAME
+        - name: TWITCH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_CLIENT_ID
+        - name: TWITCH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SECRET
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SESSION_SECRET
+        - name: STATE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: STATE_DB_PASSWORD
+        - name: STATE_DB_URL
+          value: "redis://state-db:6379"
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-container-minecraft1167890
+spec:
+  selector:
+    app: tenant-container-minecraft1167890
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 80
+  type: ClusterIP

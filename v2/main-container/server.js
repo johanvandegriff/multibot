@@ -8,6 +8,24 @@ import passport from 'passport';
 import { OAuth2Strategy } from 'passport-oauth';
 import fs from 'fs';
 import handlebars from 'handlebars';
+import k8s from '@kubernetes/client-node';
+
+const kc = new k8s.KubeConfig();
+// kc.loadFromDefault();
+kc.loadFromCluster();
+
+const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+
+const main = async () => {
+    try {
+        const podsRes = await k8sApi.listNamespacedPod('default');
+        console.log('@@@', podsRes.body, JSON.stringify(podsRes.body));
+    } catch (err) {
+        console.error(err);
+    }
+};
+
+main();
 
 // Initialize Express and middlewares
 const app = express();
@@ -24,6 +42,21 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
     await redis_client.connect();
     await redis_client.sAdd('channels', ['jjvanvan', 'minecraft1167890']); //TODO
     console.log('channels (hardcoded for now):', await list_channels());
+
+    const proxy_overrides = JSON.parse(process.env.PROXY_OVERRIDES ?? '{}');
+    
+    for (const channel of await list_channels()) {
+        let url = 'http://tenant-container-' + channel + ':8000';
+        if (proxy_overrides[channel]) {
+            url = proxy_overrides[channel];
+        }
+        console.log('[proxy]', channel, url);
+        app.use('/' + channel, createProxyMiddleware({
+            target: url,
+            changeOrigin: false,
+            ws: true,
+        }));
+    }
 })();
 
 async function list_channels() {
@@ -144,30 +177,16 @@ app.get('/', async function (req, res) {
     }));
 });
 
-const proxy_overrides = JSON.parse(process.env.PROXY_OVERRIDES ?? '{}');
-
-for (const channel of await list_channels()) {
-    let url = 'http://tenant-container-' + channel;
-    if (proxy_overrides[channel]) {
-        url = proxy_overrides[channel];
-    }
-    console.log('[proxy]', channel, url);
-    app.use('/' + channel, createProxyMiddleware({
-        target: url,
-        changeOrigin: false,
-        ws: true,
-    }));
-}
-
-app.use((req, res) => {
-    const now = + new Date();
-    console.log('[main] 404', now, req.originalUrl);
-    res.status(404).send(`<h1>404 - Not Found</h1>
-<p>The requested URL was not found on this server.</p>
-<p>If this is your username, <a href="/api/auth/twitch">log in</a> to activate it.</p>
-<p><a href="/">back to homepage</a></p>
-<p>[main] timestamp: ${now}</p>`)
-});
+// disabled for now as it interferes with the proxy routes being added later
+// app.use((req, res) => {
+//     const now = + new Date();
+//     console.log('[main] 404', now, req.originalUrl);
+//     res.status(404).send(`<h1>404 - Not Found</h1>
+// <p>The requested URL was not found on this server.</p>
+// <p>If this is your username, <a href="/api/auth/twitch">log in</a> to activate it.</p>
+// <p><a href="/">back to homepage</a></p>
+// <p>[main] timestamp: ${now}</p>`)
+// });
 
 //start the http server
 server.listen(process.env.PORT ?? 80, () => {

@@ -324,7 +324,7 @@ async function set_viewer_prop(username, prop_name, prop_value) {
 }
 
 
-app.get('/channel_props/:prop_name', channel_auth_middleware, async function (req, res) {
+app.get('/channel_props/:prop_name', async function (req, res) {
     res.send(JSON.stringify(await get_channel_prop(req.params.prop_name)));
 });
 
