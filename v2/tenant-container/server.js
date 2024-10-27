@@ -118,7 +118,8 @@ const wss = new WebSocketServer({ server });
 wss.on('connection', (client) => {
     console.log('[websocket] client connected!');
     client.on('message', (msg) => {
-        console.log('[websocket] message:', msg);
+        console.log('[websocket] message: ' + msg);
+        // msg = JSON.parse(msg);
         // broadcast(msg.type, msg.content);
     });
 });

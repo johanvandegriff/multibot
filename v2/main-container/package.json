@@ -17,7 +17,6 @@
         "passport": "^0.7.0",
         "passport-oauth": "^1.0.0",
         "redis": "^4.7.0",
-        "request": "^2.88.2",
         "vue": "^3.5.12"
     }
 }

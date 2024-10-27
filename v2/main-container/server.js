@@ -5,7 +5,6 @@ import session from 'express-session';
 import RedisStore from 'connect-redis';
 import passport from 'passport';
 import { OAuth2Strategy } from 'passport-oauth';
-import request from 'request';
 import fs from 'fs';
 import handlebars from 'handlebars';
 import bodyParser from 'body-parser';
@@ -55,24 +54,27 @@ function is_super_admin(username) {
 
 // Override passport profile function to get user profile from Twitch API
 OAuth2Strategy.prototype.userProfile = function (accessToken, done) {
-    const options = {
-        url: 'https://api.twitch.tv/helix/users',
+    fetch('https://api.twitch.tv/helix/users', {
         method: 'GET',
         headers: {
             'Client-ID': process.env.TWITCH_CLIENT_ID,
             'Accept': 'application/vnd.twitchtv.v5+json',
             'Authorization': 'Bearer ' + accessToken
         }
-    };
-
-    request(options, function (error, response, body) {
-        if (response && response.statusCode == 200) {
-            done(null, JSON.parse(body));
-        } else {
-            done(JSON.parse(body));
-        }
-    });
-}
+    })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => Promise.reject(err));
+            }
+            return response.json();
+        })
+        .then(data => {
+            done(null, data);
+        })
+        .catch(error => {
+            done(error);
+        });
+};
 
 passport.serializeUser(function (user, done) {
     done(null, user);
