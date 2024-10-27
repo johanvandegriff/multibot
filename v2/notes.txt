@@ -60,11 +60,12 @@ EXISTING FEATURES:
 EXISTING FEATURES SKIPPED FOR NOW
 easy sign up
 need to revamp: CARL chatbot responds when @'ed, except by other bots
-random nickname if none provided
-get list of enabled channels and adjust dropdown accordingly, with super admin seeing all
+prob dont need: random nickname if none provided
+prob dont need: get list of enabled channels and adjust dropdown accordingly, with super admin seeing all
 remove, no one uses it: query a nickname/username with the other
 
 NEW FEATURES TO ADD:
++move proxy to main-container and delete router-container
 decent looking UI
     +copy from old one and fix up
     +better font

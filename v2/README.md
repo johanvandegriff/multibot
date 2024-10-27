@@ -9,7 +9,6 @@ v2 is currently a prototype and many things are hardcoded, such as the channels 
 Clone the code, and create the file `.env` in the `v2` directory (the one this README is in) with the following contents:
 ```
 BASE_URL=http://localhost
-EMAIL_ADDRESS=your_email_address@example.com
 STATE_DB_PASSWORD=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 SESSION_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWITCH_SUPER_ADMIN_USERNAME=yourtwitchaccountlowercase
@@ -17,11 +16,10 @@ TWITCH_BOT_USERNAME=YourBotUsernameCaseSensitive
 TWITCH_BOT_OAUTH_TOKEN=oauth:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWITCH_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWITCH_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-YOUTUBE_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Replace all the secrets as described in the [main README](../README.md), ignoring the ones starting with `BUCKET_` since this version doesn't use a bucket.
 
 Then run it in the terminal by changing into the v2 directory with `cd v2` and building/running the docker images with `./build.sh`
 
-Navigate to `http://localhost` in your browser to see the app. The main page is hosted by `main-container` and the streamer pages are hosted by instances of `tenant-container`. They share data such as login sessions through a redis `state-db` container. The `router-container` handles sending the different URLs to the different containers.
+Navigate to `http://localhost` in your browser to see the app. The main page is hosted by `main-container`, which also has a router that proxys the streamer pages to the individual instances of `tenant-container`. They share data such as login sessions through a redis `state-db` container. When deploying, it is important to note that the main container can have replicas, but each tenant container can only have 1 instance because of the nature of the live chat connections.

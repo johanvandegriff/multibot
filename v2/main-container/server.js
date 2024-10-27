@@ -1,5 +1,6 @@
 import redis from 'redis';
 import http from 'http';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import express from 'express';
 import session from 'express-session';
 import RedisStore from 'connect-redis';
@@ -7,11 +8,9 @@ import passport from 'passport';
 import { OAuth2Strategy } from 'passport-oauth';
 import fs from 'fs';
 import handlebars from 'handlebars';
-import bodyParser from 'body-parser';
 
 // Initialize Express and middlewares
 const app = express();
-const jsonParser = bodyParser.json()
 const server = http.createServer(app);
 
 
@@ -24,8 +23,12 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
 (async () => {
     await redis_client.connect();
     await redis_client.sAdd('channels', ['jjvanvan', 'minecraft1167890']); //TODO
-    console.log('channels (hardcoded for now):', await redis_client.sMembers('channels'));
+    console.log('channels (hardcoded for now):', await list_channels());
 })();
+
+async function list_channels() {
+    return await redis_client.sMembers('channels');
+}
 
 // for consideration of using channel URLs directly, and having non-channel URLs be invalid usernames:
 // Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
@@ -141,14 +144,32 @@ app.get('/', async function (req, res) {
     }));
 });
 
+const proxy_overrides = JSON.parse(process.env.PROXY_OVERRIDES ?? '{}');
+
+for (const channel of await list_channels()) {
+    let url = 'http://tenant-container-' + channel;
+    if (proxy_overrides[channel]) {
+        url = proxy_overrides[channel];
+    }
+    console.log('[proxy]', channel, url);
+    app.use('/' + channel, createProxyMiddleware({
+        target: url,
+        changeOrigin: false,
+        ws: true,
+    }));
+}
+
 app.use((req, res) => {
+    const now = + new Date();
+    console.log('[main] 404', now, req.originalUrl);
     res.status(404).send(`<h1>404 - Not Found</h1>
 <p>The requested URL was not found on this server.</p>
 <p>If this is your username, <a href="/api/auth/twitch">log in</a> to activate it.</p>
-<a href="/">back to homepage</a>`)
+<p><a href="/">back to homepage</a></p>
+<p>[main] timestamp: ${now}</p>`)
 });
 
 //start the http server
 server.listen(process.env.PORT ?? 80, () => {
-    console.log('listening on *:' + process.env.PORT ?? 80);
+    console.log('listening on *:' + (process.env.PORT ?? 80));
 });

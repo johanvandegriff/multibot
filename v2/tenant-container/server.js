@@ -170,24 +170,19 @@ function channel_auth_middleware(req, res, next) {
     }
 }
 
-//mount all the routes with a prefix of /TWITCH_CHANNEL
-//for example if TWITCH_CHANNEL=jjvanvan then /viewers would go to /jjvanvan/viewers
-const router = express.Router();
-app.use('/' + TWITCH_CHANNEL, router);
-
 //expose js libraries to client so they can run in the browser
-router.use('/vue.js', express.static('node_modules/vue/dist/vue.esm-browser.prod.js'));
-router.use('/color-hash.js', express.static('node_modules/color-hash/dist/esm.js'));
-router.use('/tmi-utils', express.static('node_modules/tmi-utils/dist/esm', { 'extensions': ['js'] })); //add .js if not specified
-router.use('/favicon.ico', express.static('favicon.ico'));
-router.use('/favicon.png', express.static('favicon.png'));
-router.use('/external-link-ltr-icon.svg', express.static('external-link-ltr-icon.svg'));
+app.use('/vue.js', express.static('node_modules/vue/dist/vue.esm-browser.prod.js'));
+app.use('/color-hash.js', express.static('node_modules/color-hash/dist/esm.js'));
+app.use('/tmi-utils', express.static('node_modules/tmi-utils/dist/esm', { 'extensions': ['js'] })); //add .js if not specified
+app.use('/favicon.ico', express.static('favicon.ico'));
+app.use('/favicon.png', express.static('favicon.png'));
+app.use('/external-link-ltr-icon.svg', express.static('external-link-ltr-icon.svg'));
 
 // Define a simple template to safely generate HTML with values from user's profile
 const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
-router.get('/', async (req, res) => {
+app.get('/', async (req, res) => {
     const user = req.session?.passport?.user;
     res.send(template({
         user: user,
@@ -198,7 +193,7 @@ router.get('/', async (req, res) => {
     }));
 });
 
-router.get('/chat', async (req, res) => {
+app.get('/chat', async (req, res) => {
     const user = req.session?.passport?.user;
     res.send(template({
         user: user,
@@ -329,12 +324,12 @@ async function set_viewer_prop(username, prop_name, prop_value) {
 }
 
 
-router.get('/channel_props/:prop_name', channel_auth_middleware, async function (req, res) {
+app.get('/channel_props/:prop_name', channel_auth_middleware, async function (req, res) {
     res.send(JSON.stringify(await get_channel_prop(req.params.prop_name)));
 });
 
 let enabled_timeout = undefined;
-router.post('/channel_props/:prop_name', json_parser, channel_auth_middleware, async function (req, res) {
+app.post('/channel_props/:prop_name', json_parser, channel_auth_middleware, async function (req, res) {
     const prop_name = req.params.prop_name;
     const prop_value = req.body.prop_value;
     if (!(prop_name in DEFAULT_CHANNEL_PROPS)) {
@@ -355,7 +350,7 @@ router.post('/channel_props/:prop_name', json_parser, channel_auth_middleware, a
 });
 
 
-router.get('/viewers', async function (req, res) {
+app.get('/viewers', async function (req, res) {
     const viewers = await list_viewers();
     const viewer_data = {};
     for (const username of viewers) {
@@ -365,11 +360,11 @@ router.get('/viewers', async function (req, res) {
 });
 
 //not used in client yet
-router.get('/viewers/:username/:prop_name', channel_auth_middleware, async function (req, res) {
+app.get('/viewers/:username/:prop_name', channel_auth_middleware, async function (req, res) {
     res.send(JSON.stringify(await get_viewer_prop(req.params.username, req.params.prop_name)));
 });
 
-router.post('/viewers/:username/:prop_name', json_parser, channel_auth_middleware, async function (req, res) {
+app.post('/viewers/:username/:prop_name', json_parser, channel_auth_middleware, async function (req, res) {
     const username = req.params.username;
     const prop_name = req.params.prop_name;
     const prop_value = req.body.prop_value;
@@ -381,14 +376,14 @@ router.post('/viewers/:username/:prop_name', json_parser, channel_auth_middlewar
     }
 });
 
-router.delete('/viewers/:username', channel_auth_middleware, async function (req, res) {
+app.delete('/viewers/:username', channel_auth_middleware, async function (req, res) {
     const username = req.params.username;
     await delete_viewer(username);
     res.send('ok');
 });
 
 
-router.get('/find_youtube_id', async (req, res) => {
+app.get('/find_youtube_id', async (req, res) => {
     var channel = req.query.channel; //could be a url or a handle
 
     console.log('[youtube] looking up', channel);
@@ -423,10 +418,10 @@ router.get('/find_youtube_id', async (req, res) => {
     }
 });
 
-router.get('/status/youtube', async (req, res) => { res.send(JSON.stringify({ listener: youtube_listener })) });
-router.get('/status/owncast', async (req, res) => { res.send(JSON.stringify({ listener: owncast_listener })) });
-router.get('/status/kick', async (req, res) => { res.send(inspect(kick_listener?._wsClient?.pusher)) });
-router.get('/status/emotes', async (req, res) => {
+app.get('/status/youtube', async (req, res) => { res.send(JSON.stringify({ listener: youtube_listener })) });
+app.get('/status/owncast', async (req, res) => { res.send(JSON.stringify({ listener: owncast_listener })) });
+app.get('/status/kick', async (req, res) => { res.send(inspect(kick_listener?._wsClient?.pusher)) });
+app.get('/status/emotes', async (req, res) => {
     const emote_cache_copy = {};
     for (const k of Object.keys(emote_cache)) {
         if (k === 'emotes') {
@@ -438,12 +433,12 @@ router.get('/status/emotes', async (req, res) => {
     res.send(emote_cache_copy);
 });
 
-router.post('/clear_chat', channel_auth_middleware, async (req, res) => {
+app.post('/clear_chat', channel_auth_middleware, async (req, res) => {
     clear_chat();
     res.send('ok');
 });
 
-router.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history)) });
+app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history)) });
 
 const chat_history = [];
 async function clear_chat(channel) {
@@ -1357,12 +1352,15 @@ add_channel_prop_listener('enabled', async (old_value, new_value) => {
 
 
 app.use((req, res) => {
+    const now = + new Date();
+    console.log('[tenant] 404', now, req.originalUrl);
     res.status(404).send(`<h1>404 - Not Found</h1>
 <p>The requested URL was not found on this server.</p>
-<a href="/${TWITCH_CHANNEL}">back to channel page</a>`);
+<p><a href="/${TWITCH_CHANNEL}">back to channel page</a></p>
+<p>[tenant] timestamp: ${now}</p>`);
 });
 
 //start the http server
 server.listen(process.env.PORT ?? 80, () => {
-    console.log('listening on *:' + process.env.PORT ?? 80);
+    console.log('listening on *:' + (process.env.PORT ?? 80));
 });

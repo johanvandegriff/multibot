@@ -1,19 +1,4 @@
 services:
-  router-container:
-    image: caddy
-    restart: unless-stopped
-    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
-    networks:
-      - botnet
-    ports:
-      - 80:80
-      - 443:443
-    volumes:
-      - $PWD/router-container/Caddyfile:/etc/caddy/Caddyfile
-      - $PWD/router-container/caddy-data:/data
-    environment:
-      - EMAIL_ADDRESS=${EMAIL_ADDRESS}
-
   state-db:
     image: "redis:alpine"
     command: redis-server --requirepass ${STATE_DB_PASSWORD}
@@ -29,8 +14,11 @@ services:
     restart: unless-stopped
     networks:
       - botnet
+    ports:
+      - 8000:80
     environment:
       - BASE_URL=${BASE_URL}
+      - TWITCH_SUPER_ADMIN_USERNAME=${TWITCH_SUPER_ADMIN_USERNAME}
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_SECRET=${TWITCH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
@@ -44,9 +32,11 @@ services:
       - botnet
     environment:
       - TWITCH_CHANNEL=jjvanvan
-      - TWITCH_SUPER_ADMIN_USERNAME=${TWITCH_SUPER_ADMIN_USERNAME}
       - TWITCH_BOT_USERNAME=${TWITCH_BOT_USERNAME}
       - TWITCH_BOT_OAUTH_TOKEN=${TWITCH_BOT_OAUTH_TOKEN}
+
+      - BASE_URL=${BASE_URL}
+      - TWITCH_SUPER_ADMIN_USERNAME=${TWITCH_SUPER_ADMIN_USERNAME}
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_SECRET=${TWITCH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
@@ -60,9 +50,11 @@ services:
       - botnet
     environment:
       - TWITCH_CHANNEL=minecraft1167890
-      - TWITCH_SUPER_ADMIN_USERNAME=${TWITCH_SUPER_ADMIN_USERNAME}
       - TWITCH_BOT_USERNAME=${TWITCH_BOT_USERNAME}
       - TWITCH_BOT_OAUTH_TOKEN=${TWITCH_BOT_OAUTH_TOKEN}
+
+      - BASE_URL=${BASE_URL}
+      - TWITCH_SUPER_ADMIN_USERNAME=${TWITCH_SUPER_ADMIN_USERNAME}
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_SECRET=${TWITCH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
