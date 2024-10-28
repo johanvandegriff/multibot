@@ -225,12 +225,12 @@
 <body>
     <div id="app">
         <div id="login" v-if="!is_chat_fullscreen">
-            <span v-if="loggedIn">
-                <a v-if="login !== channel" :href="'/' + login"><img :src="profile_image_url" /></a>
+            <span v-if="is_logged_in">
+                <a v-if="login !== channel && is_onboarded" :href="'/' + login"><img :src="profile_image_url" /></a>
                 <img v-else :src="profile_image_url" />
                 <div class="right">
                     &nbsp;
-                    <a v-if="login !== channel" :href="'/' + login">[[display_name]]</a>
+                    <a v-if="login !== channel && is_onboarded" :href="'/' + login">[[display_name]]</a>
                     <span v-else>[[display_name]]</span>
                     <span v-if="is_super_admin">&nbsp;<span id="super_admin">SUPER ADMIN</span></span>
                     &nbsp;
@@ -253,7 +253,9 @@
                 Channel:
                 <select v-model="channel">
                     <option selected :value="channel">[[ channel ]]</option>
-                    <option v-if="loggedIn && channel !== login" :value="login">[[ login ]]</option>
+                    <option v-if="is_logged_in && is_onboarded && channel !== login" :value="login">[[ login
+                        ]]
+                    </option>
                     <option v-for="c in channels.filter(c => c !== channel && c !== login)" :value="c">[[ c ]]</option>
                 </select>
                 <button @click="custom_channel">custom</button>
@@ -261,7 +263,7 @@
             <p v-else>
                 Loading...
             </p>
-            <span v-if="loggedIn && channels">
+            <span v-if="is_logged_in && channels">
                 <span v-if="channel === login || is_super_admin">
                     <p v-if="channel_props.enabled" class="alert green-bg">
                         The bot is enabled on <span v-if="channel === login">your</span><span v-else>this</span> channel
@@ -274,19 +276,24 @@
                             @click="set_enabled(true)">ENABLE</button>
                     </p>
 
-                    <span v-if="channel_props.youtube_id && channel_props.youtube_id.length > 0">
-                        youtube channel connected:
-                        <a :href="'https://www.youtube.com/channel/' + channel_props.youtube_id">
-                            [[channel_props.youtube_id ]]
-                        </a>
-                        <button @click="set_channel_prop('youtube_id', undefined)">disconnect</button>
-                    </span>
-                    <span v-else>
-                        no youtube channel connected - enter youtube channel URL or ID:
-                        <input type="text" v-model="youtube_input" />
-                        <button @click="find_youtube_id">find channel</button>
-                    </span>
-                    <button @click="check_youtube_status">check youtube chat status</button>
+                    <p>
+                        twitch channel connected: <a :href="'https://twitch.tv/' + channel">[[channel]]</a>
+                        <button @click="check_twitch_status">check twitch chat status</button>
+                    </p>
+                    <p>
+                        <span v-if="channel_props.youtube_id && channel_props.youtube_id.length > 0">
+                            youtube channel connected:
+                            <a :href="'https://www.youtube.com/channel/' + channel_props.youtube_id">
+                                [[channel_props.youtube_id ]]
+                            </a>
+                            <button @click="set_channel_prop('youtube_id', undefined)">disconnect</button>
+                        </span>
+                        <span v-else>
+                            no youtube channel connected - enter youtube channel URL or ID:
+                            <input type="text" v-model="youtube_input" />
+                            <button @click="find_youtube_id">find channel</button>
+                        </span>
+                        <button @click="check_youtube_status">check youtube chat status</button>
                     </p>
                     <p>
                         <span v-if="channel_props.owncast_url && channel_props.owncast_url.length > 0">
@@ -327,7 +334,7 @@
                                 <button
                                     @click="channel_props_edit.fwd_cmds_yt_twitch[i] = editing_fwd_item; editing_fwd_idx = undefined; save_channel_prop('fwd_cmds_yt_twitch')">done</button>
                             </span>
-                            <span v-else class="edit" v-if="loggedIn && channel === login || is_super_admin"
+                            <span v-else class="edit" v-if="is_logged_in && channel === login || is_super_admin"
                                 @click="editing_fwd_idx = i; editing_fwd_item = cmd">✎ [[cmd]]
                             </span>
                             <span class="delete"
@@ -342,7 +349,7 @@
                 <span v-else>
                     <p class="alert gray-bg">
                         logged in as
-                        <a :href="'/' + login">[[ login ]]</a>,
+                        <a v-if="is_onboarded" :href="'/' + login">[[ login ]]</a><span v-else>[[ login ]]</span>,
                         viewing <span class="bold">[[ channel ]]</span>
                     </p>
                 </span>
@@ -382,20 +389,20 @@
                             <button @click="save_nickname">done</button>
                         </span>
                         <span v-else>
-                            <span class="edit" v-if="loggedIn && channel === login || is_super_admin"
+                            <span class="edit" v-if="is_logged_in && channel === login || is_super_admin"
                                 @click="editing_nickname = viewers[username].nickname; editing_username = username">✎
                             </span>
                             <span class="nickname">[[viewers[username].nickname]]</span>
                         </span>
                         <span class="equals"> = </span>
                         <span class="username">[[username]]</span>
-                        <span class="delete" v-if="loggedIn && channel === login || is_super_admin">
+                        <span class="delete" v-if="is_logged_in && channel === login || is_super_admin">
                             &nbsp;<button class="custom_greetz" @click="set_custom_greetz(username)">custom greetz
                                 ([[ viewers[username].custom_greetz ?? 'none set' ]])</button>
                             <span class="delete" @click="delete_viewer(username)"> ⓧ</span>
                         </span>
                     </li>
-                    <li v-if="loggedIn && channel === login || is_super_admin">
+                    <li v-if="is_logged_in && channel === login || is_super_admin">
                         <input v-model="new_nickname" style="width: 100px">
                         <span class="equals"> = </span>
                         <input v-model="new_username">
@@ -403,6 +410,12 @@
                         (case sensitive)
                     </li>
                 </ul>
+            </span>
+            <span v-if="is_logged_in && channel === login || is_super_admin">
+                <br /><br /><br /><br />
+                <br /><br /><br /><br />
+                <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
+                    @click="offboard" :disabled="!confirm_delete">DELETE ACCOUNT</button>
             </span>
         </div>
 
@@ -413,8 +426,14 @@
                 &nbsp;
                 <a class="button" target="_blank"
                     :href="'/{{channel}}/chat?show_usernames=' + show_usernames + '&show_nicknames=' + show_nicknames + '&show_pronouns=' + show_pronouns">
-                    pop-out
-                    <img style="width:20px" src="/{{channel}}/external-link-ltr-icon.svg" alt="popout chat" />
+                    &nbsp; pop-out
+                    <svg style="width:20px" xmlns="http://www.w3.org/2000/svg" width="12" height="12">
+                        <path fill="#fff" stroke="#36c" d="M1.5 4.518h5.982V10.5H1.5z" />
+                        <path fill="#36c"
+                            d="M5.765 1H11v5.39L9.427 7.937l-1.31-1.31L5.393 9.35l-2.69-2.688 2.81-2.808L4.2 2.544z" />
+                        <path fill="#fff"
+                            d="m9.995 2.004.022 4.885L8.2 5.07 5.32 7.95 4.09 6.723l2.882-2.88-1.85-1.852z" />
+                    </svg>
                 </a><br />
                 show:
                 <label class="nowrap"><input type="checkbox" v-model="show_usernames">usernames</label>&nbsp;
@@ -492,7 +511,7 @@
                     refreshToken: '{{user.refreshToken}}',
                     display_name: '{{user.display_name}}',
                     login: '{{user.login}}',
-                    loggedIn: '{{user.login}}' !== '',
+                    is_logged_in: '{{user.login}}' !== '',
                     profile_image_url: '{{user.profile_image_url}}',
                     is_super_admin: '{{is_super_admin}}' === 'true',
                     is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
@@ -526,6 +545,7 @@
                     editing_fwd_idx: undefined,
                     editing_fwd_item: undefined,
                     new_cmd: '',
+                    confirm_delete: false,
                 }
             },
             methods: {
@@ -722,6 +742,15 @@ leave blank to revert to default greetz`, this.viewers[username].custom_greetz);
                     this.set_channel_prop('kick_username', undefined);
                     this.set_channel_prop('kick_chatroom_id', undefined);
                 },
+                check_twitch_status() {
+                    fetch('/{{channel}}/status/twitch')
+                        .then(res => res.text())
+                        .then(text => {
+                            console.log('/status/twitch', text);
+                            alert(`Twitch Status:
+${text}`);
+                        });
+                },
                 check_youtube_status() {
                     fetch('/{{channel}}/status/youtube')
                         .then(res => res.json())
@@ -766,6 +795,23 @@ ${JSON.stringify(json, undefined, 2)}`);
                 clear_chat() {
                     fetch_post('/{{channel}}/clear_chat');
                 },
+                async offboard() {
+                    if (confirm(`Are you sure you want to remove the bot from ${this.channel === this.login ? 'your' : 'this'} channel (${this.channel}) and delete all the data?`)) {
+                        fetch('/api/offboard/{{channel}}')
+                            .then(async res => {
+                                const text = await res.text();
+                                if (!res.ok) {
+                                    console.log('status code:', res.status, 'text:', text);
+                                    throw new Error(text);
+                                }
+                                window.location = '/';
+                            })
+                            .catch(error => {
+                                console.error('offboard error:', error);
+                                alert('offboarding failed: ' + error.message);
+                            });
+                    }
+                }
             },
             mounted() {
                 this.websocket_connect();
@@ -788,11 +834,11 @@ ${JSON.stringify(json, undefined, 2)}`);
                     window.location = '/' + new_channel;
                 },
             },
-            // computed: {
-            //     dropdown_channels() {
-            //         return [];
-            //     }
-            // }
+            computed: {
+                is_onboarded() {
+                    return this.channels.includes(this.login);
+                }
+            },
         }).mount('#app');
     </script>
 </body>

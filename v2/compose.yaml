@@ -24,6 +24,7 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
       - STATE_DB_URL=redis://state-db:6379
+      - PROXY_OVERRIDES={"jjvanvan":"http://tenant-container-jjvanvan:80","minecraft1167890":"http://tenant-container-minecraft1167890:80"}
 
   tenant-container-jjvanvan:
     image: tenant-container

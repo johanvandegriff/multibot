@@ -2,7 +2,8 @@ const TWITCH_CHANNEL = process.env.TWITCH_CHANNEL; //the channel that this tenan
 const CHAT_HISTORY_LENGTH = 100;
 const HOUR_IN_MILLISECONDS = 1 * 60 * 60 * 1000;
 const DEFAULT_CHANNEL_PROPS = {
-    enabled: false,
+    enabled: true,
+    did_first_run: false,
     fwd_cmds_yt_twitch: ['!sr', '!test'],
     max_nickname_length: 20,
     greetz_threshold: 5 * HOUR_IN_MILLISECONDS,
@@ -140,9 +141,19 @@ const redis_client = redis.createClient({
 redis_client.on('error', err => console.log('Redis Client Error', err));
 (async () => {
     await redis_client.connect();
-    // await redis_client.sAdd('channels/jjvanvan/viewers', 'JJVanVan');
-    // await redis_client.hSet('channels/jjvanvan/viewers/JJVanVan', {'nickname': 'JJ', 'custom_greetz': 'a custom hello to you, #'});
-    // console.log(await redis_client.hGetAll('channels/jjvanvan/viewers/JJVanVan'));
+    if (!await get_channel_prop('did_first_run')) {
+        console.log('FIRST RUN');
+        for (const username of await list_viewers()) {
+            await redis_client.del(`channels/${TWITCH_CHANNEL}/viewers/${username}`); //delete viewer data
+        }
+        await redis_client.del(`channels/${TWITCH_CHANNEL}/viewers`); //delete viewer list
+
+        for (const prop_name in Object.keys(DEFAULT_CHANNEL_PROPS)) {
+            await redis_client.del(`channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`); //delete channel prop
+        }
+        await set_viewer_prop(process.env.TWITCH_BOT_USERNAME, 'nickname', DEFAULT_BOT_NICKNAME);
+        await set_channel_prop('did_first_run', true);
+    }
 })();
 
 
@@ -174,9 +185,6 @@ function channel_auth_middleware(req, res, next) {
 app.use('/vue.js', express.static('node_modules/vue/dist/vue.esm-browser.prod.js'));
 app.use('/color-hash.js', express.static('node_modules/color-hash/dist/esm.js'));
 app.use('/tmi-utils', express.static('node_modules/tmi-utils/dist/esm', { 'extensions': ['js'] })); //add .js if not specified
-app.use('/favicon.ico', express.static('favicon.ico'));
-app.use('/favicon.png', express.static('favicon.png'));
-app.use('/external-link-ltr-icon.svg', express.static('external-link-ltr-icon.svg'));
 
 // Define a simple template to safely generate HTML with values from user's profile
 const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
@@ -395,7 +403,7 @@ app.get('/find_youtube_id', async (req, res) => {
     }
     //handle the handle
     if (channel.startsWith('@')) {
-        //https://www.youtube.com/@jjvan
+        // https://www.youtube.com/@jjvan
         channel = 'https://www.youtube.com/' + channel;
     } else if (!channel.startsWith('https://') && !channel.startsWith('http://')) {
         channel = 'https://www.youtube.com/@' + channel;
@@ -418,9 +426,10 @@ app.get('/find_youtube_id', async (req, res) => {
     }
 });
 
-app.get('/status/youtube', async (req, res) => { res.send(JSON.stringify({ listener: youtube_listener })) });
-app.get('/status/owncast', async (req, res) => { res.send(JSON.stringify({ listener: owncast_listener })) });
-app.get('/status/kick', async (req, res) => { res.send(inspect(kick_listener?._wsClient?.pusher)) });
+app.get('/status/twitch', async (req, res) => { res.send(inspect(twitch_listener)); });
+app.get('/status/youtube', async (req, res) => { res.send(JSON.stringify({ listener: youtube_listener })); });
+app.get('/status/owncast', async (req, res) => { res.send(JSON.stringify({ listener: owncast_listener })); });
+app.get('/status/kick', async (req, res) => { res.send(inspect(kick_listener?._wsClient?.pusher)); });
 app.get('/status/emotes', async (req, res) => {
     const emote_cache_copy = {};
     for (const k of Object.keys(emote_cache)) {
@@ -438,7 +447,7 @@ app.post('/clear_chat', channel_auth_middleware, async (req, res) => {
     res.send('ok');
 });
 
-app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history)) });
+app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history)); });
 
 const chat_history = [];
 async function clear_chat(channel) {
@@ -619,7 +628,7 @@ async function update_emote_cache_if_needed() {
             }
 
             const emote_lookup = await youtube_emotes();
-            fetcher.emotes.forEach(emote => { emote_lookup[emote.code] = emote.toLink() });
+            fetcher.emotes.forEach(emote => { emote_lookup[emote.code] = emote.toLink(); });
             emote_cache.emotes = emote_lookup;
             emote_cache.lastUpdated = + new Date();
             emote_cache.connections = connections;
@@ -1338,11 +1347,6 @@ setInterval(connect_to_kick, KICK_CHECK_FOR_LIVESTREAM_INTERVAL);
 
 add_channel_prop_listener('enabled', async (old_value, new_value) => {
     console.log('enabled', old_value, new_value);
-    if (new_value) {
-        if (!await get_viewer_prop(process.env.TWITCH_BOT_USERNAME, 'nickname')) {
-            await set_viewer_prop(process.env.TWITCH_BOT_USERNAME, 'nickname', DEFAULT_BOT_NICKNAME);
-        }
-    }
     reconnect_to_youtube();
     reconnect_to_owncast();
     reconnect_to_kick();

@@ -56,16 +56,26 @@ EXISTING FEATURES:
 +timeout on enabling/disabling the bot to avoid spam
 +gray out button when on timeout
 +get list of all channels (any that have a tenant container, hardcode for now)
-
-EXISTING FEATURES SKIPPED FOR NOW
-easy sign up
-need to revamp: CARL chatbot responds when @'ed, except by other bots
-prob dont need: random nickname if none provided
-prob dont need: get list of enabled channels and adjust dropdown accordingly, with super admin seeing all
-remove, no one uses it: query a nickname/username with the other
+(skipped) need to revamp: CARL chatbot responds when @'ed, except by other bots
+(skipped) prob dont need: random nickname if none provided
+(skipped) prob dont need: get list of enabled channels and adjust dropdown accordingly, with super admin seeing all
+(skipped) remove, no one uses it: query a nickname/username with the other
 
 NEW FEATURES TO ADD:
 +move proxy to main-container and delete router-container
++deploy on k8s locally with minikube
++able to query k8s data from within main-container with nodejs library
++able to spin up tenant containers from within main-container
++spin up tenant containers based on what's onboarded already
++easy sign up
++login directs u to either your page (if you are already in the system, how it works currently), or back to onboarding page where you can see the progress of spinning things up, then redirects u to your page once it is up (not returning 404)
++super admin can onboard and offboard any channel
++backend prevent onboarding if already onboarded and vice versa
++link to channel page in top right should not be clickable if not onboarded
++make on/offboard return error if failed to deploy to k8s, but app still works (e.g. running with ./run-node.sh or ./run-compose.sh)
++some way to enable channels in run-test.sh and run-compose.sh (enable whatever channels are in PROXY_OVERRIDES)
++issue with load balancer: one main container updates its routes but the rest have no clue - need to poll the channels list and update routes when one is added/removed
++need 3 successes in a row in wait_for_page
 decent looking UI
     +copy from old one and fix up
     +better font
@@ -81,17 +91,17 @@ use redis for last_seen with builtin expiration (but make sure to change expirat
 move emote and pronoun caches to redis
 maybe: dedicated proxy containers for channel-independent tasks, e.g. pronoun/emote cache
 maybe: temporarily add more twitch/yt/owncast/kick chats for collabs
-+404 page
-+if a nonexistant page matches the twitch username requirements, offer to sign up
++404 page on tenant-container
+404 page on main-container (figure out how to not interfere with dynamically added proxies and wait_for_page)
+if a nonexistant page matches the twitch username requirements, offer to sign up
 better logging (might come for free with tenant container docker logs)
 feature toggles
+maybe once feature toggles are added, remove the channel enable/disable since you can already onboard/offboard
 toggle verbose logging?
 handle display name being different language than username (e.g. porukun21) just check lowercase and if different, include username, unless nickname set (username becomes a defacto nickname)
 admin feature toggle to enable/disable signups
 option to pay for signups
 option to split or combine chats
-easy sign up
-after auto signup: login directs u to either your page (if you are already in the system, how it works currently), or back to onboarding page where you can see the progress of spinning things up, then redirects u to your page once it is up (not returning 404)
 database backup and restore
 database editor
 twitch mods have permission to access the streamer's settings page

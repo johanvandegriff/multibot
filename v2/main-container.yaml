@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: main-container-account
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: main-container
+  labels:
+    app: main-container
+    logging: my_group
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: main-container
+  template:
+    metadata:
+      labels:
+        app: main-container
+        logging: my_group
+    spec:
+      serviceAccountName: main-container-account
+      containers:
+      - name: main-container
+        image: main-container
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: BASE_URL
+        - name: TWITCH_SUPER_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SUPER_ADMIN_USERNAME
+        - name: TWITCH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_CLIENT_ID
+        - name: TWITCH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: TWITCH_SECRET
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SESSION_SECRET
+        - name: STATE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: STATE_DB_PASSWORD
+        - name: STATE_DB_URL
+          value: "redis://state-db:6379"
+        ports:
+        - containerPort: 80
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: main-container
+spec:
+  selector:
+    app: main-container
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: tenant-manager
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-manager-binding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tenant-manager
+subjects:
+- kind: ServiceAccount
+  name: main-container-account
+  namespace: default
