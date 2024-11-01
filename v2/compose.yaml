@@ -10,7 +10,7 @@ services:
       - REDIS_REPLICATION_MODE=master
 
   main-container:
-    image: main-container
+    image: ${DOCKER_USERNAME}/multistream-bot-main
     restart: unless-stopped
     networks:
       - botnet
@@ -22,12 +22,12 @@ services:
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_SECRET=${TWITCH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
+      - STATE_DB_URL=${STATE_DB_URL}
       - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
-      - STATE_DB_URL=redis://state-db:6379
       - PROXY_OVERRIDES={"jjvanvan":"http://tenant-container-jjvanvan:80","minecraft1167890":"http://tenant-container-minecraft1167890:80"}
 
   tenant-container-jjvanvan:
-    image: tenant-container
+    image: ${DOCKER_USERNAME}/multistream-bot-tenant
     restart: unless-stopped
     networks:
       - botnet
@@ -41,11 +41,11 @@ services:
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_SECRET=${TWITCH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
+      - STATE_DB_URL=${STATE_DB_URL}
       - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
-      - STATE_DB_URL=redis://state-db:6379
 
   tenant-container-minecraft1167890:
-    image: tenant-container
+    image: ${DOCKER_USERNAME}/multistream-bot-tenant
     restart: unless-stopped
     networks:
       - botnet
@@ -59,8 +59,8 @@ services:
       - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
       - TWITCH_SECRET=${TWITCH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
+      - STATE_DB_URL=${STATE_DB_URL}
       - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
-      - STATE_DB_URL=redis://state-db:6379
 
 # docker network create botnet
 networks:

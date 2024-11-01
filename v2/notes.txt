@@ -76,6 +76,21 @@ NEW FEATURES TO ADD:
 +some way to enable channels in run-test.sh and run-compose.sh (enable whatever channels are in PROXY_OVERRIDES)
 +issue with load balancer: one main container updates its routes but the rest have no clue - need to poll the channels list and update routes when one is added/removed
 +need 3 successes in a row in wait_for_page
+
++deploy to digitalocean k8s and managed redis
++add https
++remove old load balancer
++fixed: not pulling latest docker in prod because of setting
++deploy new without deleting first for less downtime
+custom button might be broken? maybe remove
+standardize live chat connections
+change multistream-bot to multibot
+maybe move to the "multibot" namespace
+migrate data from v1 to v2
+deploy v2 on botbot.jjv.sh
+change TTL back to 3600
+move v2 to the main repo dir
+
 decent looking UI
     +copy from old one and fix up
     +better font
@@ -83,7 +98,6 @@ decent looking UI
     better nav with search
     time duration picker
 should a viewer be deleted if they unset their nickname? maybe only if they have no properties left (e.g. no custom greetz)
-standardize live connections
 work with new https://pr.alejo.io/faq as well as the old version
 maybe: viewer can set custom pronouns that aren't on alejo
 +retroactively add pronouns to first message after fetched
@@ -91,6 +105,7 @@ use redis for last_seen with builtin expiration (but make sure to change expirat
 move emote and pronoun caches to redis
 maybe: dedicated proxy containers for channel-independent tasks, e.g. pronoun/emote cache
 maybe: temporarily add more twitch/yt/owncast/kick chats for collabs
+maybe: move routing from main-container to k8s ingress or gateway API
 +404 page on tenant-container
 404 page on main-container (figure out how to not interfere with dynamically added proxies and wait_for_page)
 if a nonexistant page matches the twitch username requirements, offer to sign up

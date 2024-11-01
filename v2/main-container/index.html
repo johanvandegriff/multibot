@@ -84,6 +84,30 @@
             max-width: 365px;
             padding: 5px;
         }
+        .red {
+            color: #d22;
+            background-color: white;
+        }
+
+        .green {
+            color: #292;
+            background-color: white;
+        }
+
+        .bold {
+            font-weight: bold;
+        }
+
+        .rounded {
+            padding: 2px;
+            border-radius: 8px;
+        }
+
+        button:disabled,
+        button[disabled] {
+            background-color: #aaa;
+            color: #555;
+        }
     </style>
 </head>
 
@@ -123,7 +147,6 @@
                     </option>
                     <option v-for="c in channels.filter(c => c !== channel && c !== login)" :value="c">[[ c ]]</option>
                 </select>
-                <button @click="custom_channel">custom</button>
             </p>
             <span v-if="is_logged_in">
                 <span v-if="is_onboarded">
@@ -146,6 +169,10 @@
                     <input type="text" v-model="super_admin_channel_to_onboard" />
                     <button @click="onboard(super_admin_channel_to_onboard, false)">sign up</button>
                 </p>
+                <br /><br /><br /><br />
+                <br /><br /><br /><br />
+                <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
+                    @click="offboard(login)" :disabled="!confirm_delete">DELETE ACCOUNT</button>
             </span>
         </div>
     </div>
@@ -166,9 +193,9 @@
                     login: '{{user.login}}',
                     is_logged_in: '{{user.login}}' !== '',
                     is_super_admin: '{{is_super_admin}}' === 'true',
-                    CHECK_FOR_CHANNEL_CHANGES_INTERVAL: parseInt('{{CHECK_FOR_CHANNEL_CHANGES_INTERVAL}}'),
                     onboard_progress: undefined,
                     super_admin_channel_to_onboard: '',
+                    confirm_delete: false,
                 }
             },
             methods: {
@@ -220,16 +247,6 @@
                                 throw new Error(text);
                             }
                             console.log('/api/onboard:', text);
-                            let wait_sec = Math.floor(this.CHECK_FOR_CHANNEL_CHANGES_INTERVAL / 1000);
-                            const countdown = () => {
-                                this.onboard_progress = `onboarding... waiting ${wait_sec} seconds for routes...`;
-                                wait_sec -= 1;
-                                if (wait_sec > 0) {
-                                    setTimeout(countdown, 1000);
-                                }
-                            }
-                            countdown();
-                            await this.wait(this.CHECK_FOR_CHANNEL_CHANGES_INTERVAL);
                             const url = '/' + channel_to_onboard;
                             try {
                                 const successes_required = 3;
@@ -255,6 +272,23 @@
                             console.error('onboard error:', error);
                             this.onboard_progress = 'onboarding failed: ' + error.message;
                         });
+                },
+                async offboard(channel) {
+                    if (confirm(`Are you sure you want to remove the bot from ${channel === this.login ? 'your' : 'this'} channel (${channel}) and delete all the data?`)) {
+                        fetch('/api/offboard/' + channel)
+                            .then(async res => {
+                                const text = await res.text();
+                                if (!res.ok) {
+                                    console.log('status code:', res.status, 'text:', text);
+                                    throw new Error(text);
+                                }
+                                window.location = '/';
+                            })
+                            .catch(error => {
+                                console.error('offboard error:', error);
+                                alert('offboarding failed: ' + error.message);
+                            });
+                    }
                 },
             },
             mounted() {

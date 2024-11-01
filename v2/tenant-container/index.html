@@ -258,7 +258,6 @@
                     </option>
                     <option v-for="c in channels.filter(c => c !== channel && c !== login)" :value="c">[[ c ]]</option>
                 </select>
-                <button @click="custom_channel">custom</button>
             </p>
             <p v-else>
                 Loading...
@@ -415,7 +414,7 @@
                 <br /><br /><br /><br />
                 <br /><br /><br /><br />
                 <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
-                    @click="offboard" :disabled="!confirm_delete">DELETE ACCOUNT</button>
+                    @click="offboard(channel)" :disabled="!confirm_delete">DELETE ACCOUNT</button>
             </span>
         </div>
 
@@ -673,9 +672,6 @@ leave blank to revert to default greetz`, this.viewers[username].custom_greetz);
                 delete_viewer(username) {
                     fetch_delete(`/${this.channel}/viewers/${username}`);
                 },
-                custom_channel() {
-                    this.channel = prompt('enter channel name').toLowerCase();
-                },
                 find_youtube_id() {
                     this.youtube_id = '';
                     console.log(this.youtube_input);
@@ -795,9 +791,9 @@ ${JSON.stringify(json, undefined, 2)}`);
                 clear_chat() {
                     fetch_post('/{{channel}}/clear_chat');
                 },
-                async offboard() {
-                    if (confirm(`Are you sure you want to remove the bot from ${this.channel === this.login ? 'your' : 'this'} channel (${this.channel}) and delete all the data?`)) {
-                        fetch('/api/offboard/{{channel}}')
+                async offboard(channel) {
+                    if (confirm(`Are you sure you want to remove the bot from ${channel === this.login ? 'your' : 'this'} channel (${channel}) and delete all the data?`)) {
+                        fetch('/api/offboard/' + channel)
                             .then(async res => {
                                 const text = await res.text();
                                 if (!res.ok) {
@@ -811,7 +807,7 @@ ${JSON.stringify(json, undefined, 2)}`);
                                 alert('offboarding failed: ' + error.message);
                             });
                     }
-                }
+                },
             },
             mounted() {
                 this.websocket_connect();

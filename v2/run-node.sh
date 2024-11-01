@@ -1,10 +1,11 @@
 #!/bin/bash
 set -a # automatically export all variables
-source .env
+source .env.local
 set +a
 
-export BASE_URL=http://localhost:8000
 docker compose start state-db
+export STATE_DB_URL=redis://localhost:6379
+
 cd tenant-container
 PORT=8081 TWITCH_CHANNEL=jjvanvan node server.js &
 PORT=8082 TWITCH_CHANNEL=minecraft1167890 node server.js &

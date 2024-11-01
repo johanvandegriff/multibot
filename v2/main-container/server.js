@@ -1,4 +1,4 @@
-const CHECK_FOR_CHANNEL_CHANGES_INTERVAL = 10 * 1000; //10 seconds
+const REDIS_CHANNELS_POLL_MS = 1000;
 
 import redis from 'redis';
 import http from 'http';
@@ -20,93 +20,13 @@ const appsV1Api = kc.makeApiClient(k8s.AppsV1Api);
 const coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
 
 async function create_tenant_container(channel) {
-    const deployment = yaml.load(`
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tenant-container-${channel}
-  labels:
-    app: tenant-container-${channel}
-    group: tenant-containers
-    logging: my_group
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: tenant-container-${channel}
-  template:
-    metadata:
-      labels:
-        app: tenant-container-${channel}
-        group: tenant-containers
-        logging: my_group
-    spec:
-      containers:
-      - name: tenant-container-${channel}
-        image: tenant-container
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: TWITCH_CHANNEL
-          value: "${channel}"
-        - name: TWITCH_BOT_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: TWITCH_BOT_USERNAME
-        - name: TWITCH_BOT_OAUTH_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: TWITCH_BOT_OAUTH_TOKEN
-        - name: BASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: BASE_URL
-        - name: TWITCH_SUPER_ADMIN_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: TWITCH_SUPER_ADMIN_USERNAME
-        - name: TWITCH_CLIENT_ID
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: TWITCH_CLIENT_ID
-        - name: TWITCH_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: TWITCH_SECRET
-        - name: SESSION_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: SESSION_SECRET
-        - name: STATE_DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: STATE_DB_PASSWORD
-        - name: STATE_DB_URL
-          value: "redis://state-db:6379"
-      restartPolicy: Always
-    `);
-
-    const service = yaml.load(`
-apiVersion: v1
-kind: Service
-metadata:
-  name: tenant-container-${channel}
-spec:
-  selector:
-    app: tenant-container-${channel}
-  ports:
-  - protocol: TCP
-    port: 8000
-    targetPort: 80
-  type: ClusterIP
-    `);
+    const [deployment, service] = fs.readFileSync('tenant-container.yaml')
+        .toString('utf-8')
+        .replaceAll('{{IMAGE}}', process.env.DOCKER_USERNAME + '/multistream-bot-tenant:latest')
+        .replaceAll('{{IMAGE_PULL_POLICY}}', process.env.IMAGE_PULL_POLICY)
+        .replaceAll('{{CHANNEL}}', channel)
+        .split('---')
+        .map(text => yaml.load(text));
 
     let worked = true;
     try {
@@ -219,7 +139,7 @@ async function check_for_channel_changes() {
     old_channels = channels;
 }
 
-setInterval(check_for_channel_changes, CHECK_FOR_CHANNEL_CHANGES_INTERVAL);
+setInterval(check_for_channel_changes, REDIS_CHANNELS_POLL_MS);
 
 // for consideration of using channel URLs directly, and having non-channel URLs be invalid usernames:
 // Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
@@ -402,7 +322,6 @@ app.get('/', async function (req, res) {
         channels: await redis_client.sMembers('channels'),
         is_super_admin: is_super_admin(user?.login),
         user: user,
-        CHECK_FOR_CHANNEL_CHANGES_INTERVAL: CHECK_FOR_CHANNEL_CHANGES_INTERVAL,
     }));
 });
 
