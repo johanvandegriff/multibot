@@ -10,7 +10,7 @@ services:
       - REDIS_REPLICATION_MODE=master
 
   main-container:
-    image: ${DOCKER_USERNAME}/multistream-bot-main
+    image: ${DOCKER_USERNAME}/multibot-main
     restart: unless-stopped
     networks:
       - botnet
@@ -27,7 +27,7 @@ services:
       - PROXY_OVERRIDES={"jjvanvan":"http://tenant-container-jjvanvan:80","minecraft1167890":"http://tenant-container-minecraft1167890:80"}
 
   tenant-container-jjvanvan:
-    image: ${DOCKER_USERNAME}/multistream-bot-tenant
+    image: ${DOCKER_USERNAME}/multibot-tenant
     restart: unless-stopped
     networks:
       - botnet
@@ -45,7 +45,7 @@ services:
       - STATE_DB_PASSWORD=${STATE_DB_PASSWORD}
 
   tenant-container-minecraft1167890:
-    image: ${DOCKER_USERNAME}/multistream-bot-tenant
+    image: ${DOCKER_USERNAME}/multibot-tenant
     restart: unless-stopped
     networks:
       - botnet

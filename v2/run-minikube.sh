@@ -2,25 +2,30 @@
 source .env.local
 export IMAGE_PULL_POLICY=IfNotPresent
 export KUBECONFIG=
+ns=multibot #namespace
+
 if minikube status | grep Stopped > /dev/null; then
   minikube start
 fi
 alias kubectl='minikube kubectl --'
-eval $(minikube docker-env)
-docker image rm --force "$DOCKER_USERNAME/multistream-bot-main:latest" "$DOCKER_USERNAME/multistream-bot-tenant:latest"
-docker build -t "$DOCKER_USERNAME/multistream-bot-main:latest" main-container
-docker build -t "$DOCKER_USERNAME/multistream-bot-tenant:latest" tenant-container
+kubectl create namespace $ns
+kubectl -n $ns get nodes
 
-# kubectl delete deployment state-db
-# kubectl delete service state-db
-kubectl delete deployment main-container
-kubectl delete service main-container
-for deployment in $(kubectl get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
-  kubectl delete deployment $deployment
-  kubectl delete service $deployment
+eval $(minikube docker-env)
+docker image rm --force "$DOCKER_USERNAME/multibot-main:latest" "$DOCKER_USERNAME/multibot-tenant:latest"
+docker build -t "$DOCKER_USERNAME/multibot-main:latest" main-container
+docker build -t "$DOCKER_USERNAME/multibot-tenant:latest" tenant-container
+
+# kubectl -n $ns delete deployment state-db
+# kubectl -n $ns delete service state-db
+kubectl -n $ns delete deployment main-container
+kubectl -n $ns delete service main-container
+for deployment in $(kubectl -n $ns get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
+  kubectl -n $ns delete deployment $deployment
+  kubectl -n $ns delete service $deployment
 done
 
-kubectl create secret generic app-secrets \
+kubectl -n $ns create secret generic app-secrets \
   --from-literal=BASE_URL=$BASE_URL \
   --from-literal=TWITCH_SUPER_ADMIN_USERNAME=$TWITCH_SUPER_ADMIN_USERNAME \
   --from-literal=TWITCH_CLIENT_ID=$TWITCH_CLIENT_ID \
@@ -34,20 +39,21 @@ kubectl create secret generic app-secrets \
   --from-literal=IMAGE_PULL_POLICY=$IMAGE_PULL_POLICY \
   --dry-run=client -o yaml > app-secrets.yaml
 
-kubectl apply -f app-secrets.yaml
+kubectl -n $ns apply -f app-secrets.yaml
 rm app-secrets.yaml
 
-kubectl apply -f state-db.yaml
+kubectl -n $ns apply -f state-db.yaml
 cat main-container.yaml | \
-  sed "s,{{IMAGE}},$DOCKER_USERNAME/multistream-bot-main:latest,g" | \
+  sed "s,{{IMAGE}},$DOCKER_USERNAME/multibot-main:latest,g" | \
   sed "s,{{IMAGE_PULL_POLICY}},$IMAGE_PULL_POLICY,g" | \
   sed "s,{{SERVICE_TYPE}},LoadBalancer,g" | \
-  kubectl apply -f -
+  kubectl -n $ns apply -f -
 
-while kubectl get deployment | grep ' 0 '; do
+while kubectl -n $ns get deployment | grep ' 0 '; do
   sleep 0.1
 done
-kubectl get deployment
+sleep 1
+kubectl -n $ns get deployment
 
 USE_LOAD_BALANCER=true
 # USE_LOAD_BALANCER=false
@@ -56,8 +62,8 @@ if [[ "$USE_LOAD_BALANCER" == true ]]; then
   minikube tunnel &
   ip_and_port=pending
   while echo $ip_and_port | grep pending > /dev/null; do
-      ip_and_port=$(kubectl get services main-container | awk '{split($5,a,":"); print $4 ":" a[1]}' | tail -1)
-      # ip=$(kubectl get services main-container | awk 'print $4' | tail -1)
+      ip_and_port=$(kubectl -n $ns get services main-container | awk '{split($5,a,":"); print $4 ":" a[1]}' | tail -1)
+      # ip=$(kubectl -n $ns get services main-container | awk 'print $4' | tail -1)
       echo "$ip_and_port"
       sleep 0.1
   done
@@ -69,8 +75,8 @@ if [[ "$USE_LOAD_BALANCER" == true ]]; then
   " > Caddyfile
   caddy run --config Caddyfile --adapter caddyfile --watch &
 else
-  # kubectl expose deployment main-container --type=NodePort --port=8000
-  kubectl port-forward service/main-container 8000:8000 > /dev/null &
+  # kubectl -n $ns expose deployment main-container --type=NodePort --port=8000
+  kubectl -n $ns port-forward service/main-container 8000:8000 > /dev/null &
 fi
-kubectl logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
+kubectl -n $ns logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
 # read a

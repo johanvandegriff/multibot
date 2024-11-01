@@ -84,6 +84,7 @@
             max-width: 365px;
             padding: 5px;
         }
+
         .red {
             color: #d22;
             background-color: white;
@@ -169,10 +170,13 @@
                     <input type="text" v-model="super_admin_channel_to_onboard" />
                     <button @click="onboard(super_admin_channel_to_onboard, false)">sign up</button>
                 </p>
+            </span>
+            <span v-if="is_onboarded">
                 <br /><br /><br /><br />
                 <br /><br /><br /><br />
-                <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
-                    @click="offboard(login)" :disabled="!confirm_delete">DELETE ACCOUNT</button>
+                <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button
+                    class="red bold rounded" @click="offboard(login)" :disabled="!confirm_delete">
+                    DELETE ACCOUNT</button>
             </span>
         </div>
     </div>
@@ -221,7 +225,7 @@
                                 successes++;
                                 console.log(`succeeded, #${successes}/${successes_required} in a row`)
                                 if (successes >= successes_required) {
-                                    progress_callback(attempt+1, successes, elapsed_ms);
+                                    progress_callback(attempt + 1, successes, elapsed_ms);
                                     return response;
                                 }
                             }

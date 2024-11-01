@@ -82,15 +82,15 @@ NEW FEATURES TO ADD:
 +remove old load balancer
 +fixed: not pulling latest docker in prod because of setting
 +deploy new without deleting first for less downtime
-custom button might be broken? maybe remove
-standardize live chat connections
-change multistream-bot to multibot
-maybe move to the "multibot" namespace
++remove custom button since it cannot show arbitrary channels
++change multistream-bot to multibot
++move to the "multibot" namespace
 migrate data from v1 to v2
 deploy v2 on botbot.jjv.sh
 change TTL back to 3600
 move v2 to the main repo dir
 
+standardize live chat connections
 decent looking UI
     +copy from old one and fix up
     +better font

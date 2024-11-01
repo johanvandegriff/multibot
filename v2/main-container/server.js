@@ -22,7 +22,7 @@ const coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
 async function create_tenant_container(channel) {
     const [deployment, service] = fs.readFileSync('tenant-container.yaml')
         .toString('utf-8')
-        .replaceAll('{{IMAGE}}', process.env.DOCKER_USERNAME + '/multistream-bot-tenant:latest')
+        .replaceAll('{{IMAGE}}', process.env.DOCKER_USERNAME + '/multibot-tenant:latest')
         .replaceAll('{{IMAGE_PULL_POLICY}}', process.env.IMAGE_PULL_POLICY)
         .replaceAll('{{CHANNEL}}', channel)
         .split('---')
@@ -31,7 +31,7 @@ async function create_tenant_container(channel) {
     let worked = true;
     try {
         console.log('creating deployment...');
-        const deployment_res = await appsV1Api.createNamespacedDeployment('default', deployment);
+        const deployment_res = await appsV1Api.createNamespacedDeployment(deployment.metadata.namespace, deployment);
         console.log('created deployment:', deployment_res.body);
     } catch (err) {
         worked = false;
@@ -39,7 +39,7 @@ async function create_tenant_container(channel) {
     }
     try {
         console.log('creating service...');
-        const service_res = await coreV1Api.createNamespacedService('default', service);
+        const service_res = await coreV1Api.createNamespacedService(service.metadata.namespace, service);
         console.log('created service:', service_res.body);
     } catch (err) {
         worked = false;

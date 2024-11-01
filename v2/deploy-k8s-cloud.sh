@@ -6,7 +6,10 @@ if [[ -z "$KUBECONFIG" ]]; then
 fi
 export IMAGE_PULL_POLICY=Always
 export KUBECONFIG
-kubectl get nodes
+ns=multibot #namespace
+
+kubectl create namespace $ns
+kubectl -n $ns get nodes
 
 #build and push docker images
 git_commit_hash=$(git rev-parse --short HEAD) #e.g. 8f6d85b
@@ -21,13 +24,13 @@ else
   exit 1
 fi
 
-docker build -t "$DOCKER_USERNAME/multistream-bot-main:$docker_tag" -t "$DOCKER_USERNAME/multistream-bot-main:latest" main-container
-docker build -t "$DOCKER_USERNAME/multistream-bot-tenant:$docker_tag" -t "$DOCKER_USERNAME/multistream-bot-tenant:latest" tenant-container
+docker build -t "$DOCKER_USERNAME/multibot-main:$docker_tag" -t "$DOCKER_USERNAME/multibot-main:latest" main-container
+docker build -t "$DOCKER_USERNAME/multibot-tenant:$docker_tag" -t "$DOCKER_USERNAME/multibot-tenant:latest" tenant-container
 
-docker push "$DOCKER_USERNAME/multistream-bot-main:latest"
-docker push "$DOCKER_USERNAME/multistream-bot-tenant:latest"
+docker push "$DOCKER_USERNAME/multibot-main:latest"
+docker push "$DOCKER_USERNAME/multibot-tenant:latest"
 
-kubectl create secret generic app-secrets \
+kubectl -n $ns create secret generic app-secrets \
   --from-literal=BASE_URL=$BASE_URL \
   --from-literal=TWITCH_SUPER_ADMIN_USERNAME=$TWITCH_SUPER_ADMIN_USERNAME \
   --from-literal=TWITCH_CLIENT_ID=$TWITCH_CLIENT_ID \
@@ -41,7 +44,7 @@ kubectl create secret generic app-secrets \
   --from-literal=IMAGE_PULL_POLICY=$IMAGE_PULL_POLICY \
   --dry-run=client -o yaml > app-secrets.yaml
 
-kubectl apply -f app-secrets.yaml
+kubectl -n $ns apply -f app-secrets.yaml
 rm app-secrets.yaml
 
 # https://cert-manager.io/docs/tutorials/acme/nginx-ingress/
@@ -52,27 +55,28 @@ kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.1
 cat prod-issuer.yaml | sed "s/{{EMAIL}}/$EMAIL_ADDRESS/g" | kubectl create -f -
 
 
-# kubectl apply -f state-db.yaml
+# kubectl -n $ns apply -f state-db.yaml
 cat main-container.yaml | \
-  sed "s,{{IMAGE}},$DOCKER_USERNAME/multistream-bot-main:latest,g" | \
+  sed "s,{{IMAGE}},$DOCKER_USERNAME/multibot-main:latest,g" | \
   sed "s,{{IMAGE_PULL_POLICY}},$IMAGE_PULL_POLICY,g" | \
   sed "s,{{SERVICE_TYPE}},ClusterIP,g" | \
-  kubectl apply -f -
+  kubectl -n $ns apply -f -
 
 #restart the pods to get the new container images
-for deployment in $(kubectl get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
-  kubectl rollout restart deployment $deployment
+for deployment in $(kubectl -n $ns get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
+  kubectl -n $ns rollout restart deployment $deployment
 done
-kubectl rollout restart deployment main-container
+kubectl -n $ns rollout restart deployment main-container
 
 DOMAIN_NAME=$(echo "$BASE_URL" | sed 's,https://,,g')
 cat main-ingress.yaml | \
   sed "s,{{DOMAIN_NAME}},$DOMAIN_NAME,g" | \
   kubectl apply -f -
 
-while kubectl get deployment | grep ' 0 '; do
+while kubectl -n $ns get deployment | grep ' 0 '; do
   sleep 0.1
 done
-kubectl get deployment
+sleep 1
+kubectl -n $ns get deployment
 
-kubectl logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
+kubectl -n $ns logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
