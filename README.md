@@ -4,8 +4,9 @@ This is a livestream bot with multiple functions:
 * forward commands - listens for people typing commands on youtube and sends them over to twitch for your other bots to ingest, such as `!sr billy joel just the way u are`
 * nicknames - chat members can set a nickname for the bot to greet them with
 * admin page - log in with twitch to access your admin settings, specify which commands to forward, set up multichat, and change nicknames manually
-* chatbot - the bot will also reply when mentioned or replied to (NOTE: this feature is not implemented yet in v2)
+* coming soon: chatbot - the bot will also reply when mentioned or replied to
 * coming soon: livestream splitting - point OBS to this and have it forward the stream to twitch, youtube, owncast, etc. For now, you can use [this](https://codeberg.org/johanvandegriff/multistream) if you know how to use docker.
+* coming soon: OBS hosting - run OBS in the cloud, good if you have a bad connection, such as IRL streams
 
 ## Add to Your Channel
 Go to https://botbot.jjv.sh and click on "log in" at the top right. It will say `JJBotBot wants to access your account` (note that it only asks for permission to view your email and nothing else, so there is no way for it to change anything on your twitch account), click Authorize.

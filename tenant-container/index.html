@@ -564,7 +564,8 @@
                     return parseEmotesInMessage(emotes, text);
                 },
                 websocket_connect() {
-                    const ws = new WebSocket(`ws://${window.document.location.host}/{{channel}}`);
+                    const ws_origin = window.document.location.origin.replace('http', 'ws');
+                    const ws = new WebSocket(`${ws_origin}/{{channel}}`);
                     ws.binaryType = "blob";
                     // Log socket opening and closing
                     ws.addEventListener("open", event => {
@@ -573,7 +574,7 @@
                     });
                     ws.addEventListener("close", event => {
                         console.log("Websocket connection closed");
-                        setTimeout(this.websocket_connect, 5000);
+                        setTimeout(this.websocket_connect, 500);
                     });
                     ws.onmessage = this.websocket_message;
                 },

@@ -20,7 +20,7 @@ metadata:
     app: main-container
     logging: my_group
 spec:
-  replicas: 5
+  replicas: 2
   selector:
     matchLabels:
       app: main-container
@@ -89,7 +89,7 @@ apiVersion: v1
 kind: Service
 metadata:
   namespace: multibot
-  name: main-container
+  name: main-container-svc
 spec:
   selector:
     app: main-container

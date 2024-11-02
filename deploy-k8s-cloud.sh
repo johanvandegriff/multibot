@@ -54,6 +54,12 @@ kubectl create namespace cert-manager
 kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.16.1/cert-manager.yaml
 cat prod-issuer.yaml | sed "s/{{EMAIL}}/$EMAIL_ADDRESS/g" | kubectl create -f -
 
+# kubectl -n $ns delete deployment main-container
+# kubectl -n $ns delete service main-container-svc
+# for deployment in $(kubectl -n $ns get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
+#   kubectl -n $ns delete deployment $deployment
+#   kubectl -n $ns delete service $deployment-svc
+# done
 
 # kubectl -n $ns apply -f state-db.yaml
 cat main-container.yaml | \
@@ -79,4 +85,4 @@ done
 sleep 1
 kubectl -n $ns get deployment
 
-kubectl -n $ns logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
+kubectl -n $ns logs --max-log-requests 50 --all-containers --ignore-errors --tail=100 -f --prefix -l logging=my_group

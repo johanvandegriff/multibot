@@ -90,11 +90,15 @@ NEW FEATURES TO ADD:
 +make jjv.sh all point to k8s and change TTL back to 3600
 +move v2 to the main repo dir
 +fix up README
-fix websockets
++fix websockets
++fix intermittent timeouts (issue was deployment and service being named the same thing)
+add cpu limits and horizontal pod autoscaling
 redis backups
 
 link to twitch, yt, etc. on a channel page even when not logged in
 RTMP livestream splitting with 2nd tenant container
+OBS container hosting with 3rd tenant container
+probably not: owncast hosting?
 standardize live chat connections
 decent looking UI
     +copy from old one and fix up

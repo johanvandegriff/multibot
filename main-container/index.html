@@ -142,11 +142,11 @@
             <p v-if="channels">
                 Channel:
                 <select v-model="channel">
-                    <option selected :value="channel">[[ channel ]]</option>
-                    <option v-if="is_logged_in && is_onboarded && channel !== login" :value="login">[[ login
+                    <option selected :value="channel">select a channel</option>
+                    <option v-if="is_logged_in && is_onboarded && '' !== login" :value="login">[[ login
                         ]]
                     </option>
-                    <option v-for="c in channels.filter(c => c !== channel && c !== login)" :value="c">[[ c ]]</option>
+                    <option v-for="c in channels.filter(c => c !== '' && c !== login)" :value="c">[[ c ]]</option>
                 </select>
             </p>
             <span v-if="is_logged_in">
@@ -174,8 +174,8 @@
             <span v-if="is_onboarded">
                 <br /><br /><br /><br />
                 <br /><br /><br /><br />
-                <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button
-                    class="red bold rounded" @click="offboard(login)" :disabled="!confirm_delete">
+                <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
+                    @click="offboard(login)" :disabled="!confirm_delete">
                     DELETE ACCOUNT</button>
             </span>
         </div>
@@ -206,7 +206,7 @@
                 async wait(duration_ms) {
                     await new Promise(resolve => setTimeout(resolve, duration_ms));
                 },
-                async wait_for_page(url, progress_callback = (attempts_made, successes, elapsed_ms) => { }, successes_required = 3, tries = 10, initial_timeout_ms = 900, initial_retry_ms = 100) {
+                async wait_for_page(url, progress_callback = (attempts_made, successes, elapsed_ms) => { }, successes_required = 3, tries = 30, initial_timeout_ms = 600, initial_retry_ms = 400) {
                     let timeout_ms = initial_timeout_ms;
                     let retry_ms = initial_retry_ms;
                     let successes = 0;
@@ -215,19 +215,20 @@
                         const elapsed_ms = new Date() - start_ms;
                         progress_callback(attempt, successes, elapsed_ms);
                         try {
-                            const response = await fetch(url, {
+                            const res = await fetch(url, {
                                 signal: AbortSignal.timeout(timeout_ms)
                             });
-                            if (response.ok) {
-                                //when it succeeds, go back to the original durations and hopefully it succeeds the next few times too
-                                timeout_ms = initial_timeout_ms;
-                                retry_ms = initial_retry_ms;
-                                successes++;
-                                console.log(`succeeded, #${successes}/${successes_required} in a row`)
-                                if (successes >= successes_required) {
-                                    progress_callback(attempt + 1, successes, elapsed_ms);
-                                    return response;
-                                }
+                            if (!res.ok) {
+                                throw new Error(`status: ${res.status} ${await res.text()}`);
+                            }
+                            //when it succeeds, go back to the original durations and hopefully it succeeds the next few times too
+                            timeout_ms = initial_timeout_ms;
+                            retry_ms = initial_retry_ms;
+                            successes++;
+                            console.log(`succeeded, #${successes}/${successes_required} in a row`)
+                            if (successes >= successes_required) {
+                                progress_callback(attempt + 1, successes, elapsed_ms);
+                                return res;
                             }
                         } catch (error) {
                             successes = 0;
@@ -252,25 +253,21 @@
                             }
                             console.log('/api/onboard:', text);
                             const url = '/' + channel_to_onboard;
-                            try {
-                                const successes_required = 3;
-                                await this.wait_for_page(url, (attempts_made, successes, elapsed_ms) => {
-                                    this.onboard_progress = `onboarding... waiting for OK ${successes}/${successes_required} (${Math.floor(elapsed_ms / 1000)} sec)...`;
-                                }, successes_required);
-                                setTimeout(() => {
-                                    if (redirect) {
-                                        this.onboard_progress = 'done onboarding! redirecting...';
-                                        setTimeout(() => {
-                                            window.location = url; //go to the newly created page
-                                        }, 1000);
-                                    } else {
-                                        this.onboard_progress = 'done onboarding! see the channel page here: ';
-                                        this.onboard_link = url;
-                                    }
-                                }, 500);
-                            } catch (error) {
-                                this.onboard_progress = 'onboarding failed: ' + error;
-                            }
+                            const successes_required = 3;
+                            await this.wait_for_page(url, (attempts_made, successes, elapsed_ms) => {
+                                this.onboard_progress = `onboarding... waiting for OK ${successes}/${successes_required} (${Math.floor(elapsed_ms / 1000)} sec)...`;
+                            }, successes_required);
+                            setTimeout(() => {
+                                if (redirect) {
+                                    this.onboard_progress = 'done onboarding! redirecting...';
+                                    setTimeout(() => {
+                                        window.location = url; //go to the newly created page
+                                    }, 1000);
+                                } else {
+                                    this.onboard_progress = 'done onboarding! see the channel page here: ';
+                                    this.onboard_link = url;
+                                }
+                            }, 500);
                         })
                         .catch(error => {
                             console.error('onboard error:', error);

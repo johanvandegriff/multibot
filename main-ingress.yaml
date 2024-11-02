@@ -5,6 +5,12 @@ metadata:
   namespace: multibot
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/websocket-services: core-service
+    nginx.org/websocket-services: core-service
 spec:
   tls:
   - hosts:
@@ -19,6 +25,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: main-container
+            name: main-container-svc
             port:
               number: 80

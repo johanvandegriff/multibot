@@ -19,14 +19,18 @@ kc.loadFromCluster();
 const appsV1Api = kc.makeApiClient(k8s.AppsV1Api);
 const coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
 
-async function create_tenant_container(channel) {
-    const [deployment, service] = fs.readFileSync('tenant-container.yaml')
+function load_tenant_yaml(channel) {
+    return fs.readFileSync('tenant-container.yaml')
         .toString('utf-8')
         .replaceAll('{{IMAGE}}', process.env.DOCKER_USERNAME + '/multibot-tenant:latest')
         .replaceAll('{{IMAGE_PULL_POLICY}}', process.env.IMAGE_PULL_POLICY)
         .replaceAll('{{CHANNEL}}', channel)
         .split('---')
         .map(text => yaml.load(text));
+}
+
+async function create_tenant_container(channel) {
+    const [deployment, service] = load_tenant_yaml(channel);
 
     let worked = true;
     try {
@@ -48,26 +52,13 @@ async function create_tenant_container(channel) {
     return worked;
 }
 
-async function create_tenant_proxy(channel) {
-    //set up a proxy to the container on the app route /channel
-    let url = 'http://tenant-container-' + channel + ':8000';
-    if (proxy_overrides[channel]) {
-        url = proxy_overrides[channel];
-    }
-    console.log('[proxy]', channel, url);
-    app.use('/' + channel, createProxyMiddleware({
-        target: url,
-        changeOrigin: false,
-        ws: true,
-    }));
-}
-
 async function delete_tenant_container(channel) {
-    const name = `tenant-container-${channel}`;
+    const [deployment, service] = load_tenant_yaml(channel);
+
     let worked = true;
     try {
         console.log('deleting deployment...');
-        const deployment_res = await appsV1Api.deleteNamespacedDeployment(name, 'default');
+        const deployment_res = await appsV1Api.deleteNamespacedDeployment(deployment.metadata.name, deployment.metadata.namespace);
         console.log('deleted deployment:', deployment_res.body);
     } catch (err) {
         worked = false;
@@ -75,7 +66,7 @@ async function delete_tenant_container(channel) {
     }
     try {
         console.log('deleting service...');
-        const service_res = await coreV1Api.deleteNamespacedService(name, 'default');
+        const service_res = await coreV1Api.deleteNamespacedService(service.metadata.name, service.metadata.namespace);
         console.log('deleted service:', service_res.body);
     } catch (err) {
         worked = false;
@@ -83,20 +74,6 @@ async function delete_tenant_container(channel) {
     }
     return worked;
 }
-
-async function delete_tenant_proxy(channel) {
-    //remove the proxy to the container from the app routes (using a bit of a hacky method)
-    // https://stackoverflow.com/questions/18602578/proper-way-to-remove-middleware-from-the-express-stack
-    // console.log('BEFORE:', channel, app._router.stack);
-    const regexp_str = '/^\\/' + channel + '\\/?(?=\\/|$)/i'; // String(/^\/minecraft1167890\/?(?=\/|$)/i);
-    app._router.stack = app._router.stack.filter(layer => String(layer.regexp) !== regexp_str);
-    // console.log('AFTER:', channel, app._router.stack);
-}
-
-
-// Initialize Express and middlewares
-const app = express();
-const server = http.createServer(app);
 
 
 const redis_client = redis.createClient({
@@ -116,30 +93,13 @@ const proxy_overrides = JSON.parse(process.env.PROXY_OVERRIDES ?? '{}');
     for (const channel of channels) {
         //don't await, start them in parallel
         create_tenant_container(channel);
-        create_tenant_proxy(channel);
     }
-    old_channels = channels;
 })();
 
-let old_channels = [];
-async function check_for_channel_changes() {
-    const channels = await redis_client.sMembers('channels');
-    const added = channels.filter(c => !old_channels.includes(c));
-    const removed = old_channels.filter(c => !channels.includes(c));
 
-    for (const channel of added) {
-        console.log('channel added:', channel);
-        create_tenant_proxy(channel);
-    }
-    for (const channel of removed) {
-        console.log('channel removed:', channel);
-        delete_tenant_proxy(channel);
-    }
-
-    old_channels = channels;
-}
-
-setInterval(check_for_channel_changes, REDIS_CHANNELS_POLL_MS);
+// Initialize Express and middlewares
+const app = express();
+const server = http.createServer(app);
 
 // for consideration of using channel URLs directly, and having non-channel URLs be invalid usernames:
 // Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
@@ -269,7 +229,6 @@ app.get('/api/onboard/:channel', channel_auth_middleware, async function (req, r
         res.status(500).send('error creating tenant'); //500 Internal Server Error
         return;
     }
-    // await create_tenant_proxy(channel); //will be detected by the polling
     await redis_client.sAdd('channels', channel); //add it to the list of channels in redis
     console.log('onboarded', channel);
     res.send('ok');
@@ -293,7 +252,6 @@ app.get('/api/offboard/:channel', channel_auth_middleware, async function (req, 
         res.status(500).send('error deleting tenant'); //500 Internal Server Error
         return;
     }
-    // await delete_tenant_proxy(channel); //will be detected by the polling
     await redis_client.del(`channels/${channel}/channel_props/did_first_run`); //remove the first run prop so it will execute the first run again if onboarded
     await redis_client.sRem('channels', channel); //remove it from the list of channels in redis
     console.log('offboarded', channel);
@@ -325,16 +283,45 @@ app.get('/', async function (req, res) {
     }));
 });
 
-// disabled for now as it interferes with the proxy routes being added later
-// app.use((req, res) => {
-//     const now = + new Date();
-//     console.log('[main] 404', now, req.originalUrl);
-//     res.status(404).send(`<h1>404 - Not Found</h1>
-// <p>The requested URL was not found on this server.</p>
-// <p>If this is your username, <a href="/api/auth/twitch">log in</a> to activate it.</p>
-// <p><a href="/">back to homepage</a></p>
-// <p>[main] timestamp: ${now}</p>`)
-// });
+//create separate routes for proxy overrides, only used locally
+for (const channel in proxy_overrides) {
+    const url = proxy_overrides[channel];
+    console.log('[proxy override]', channel, url);
+    app.use('/' + channel, createProxyMiddleware({
+        target: url,
+        changeOrigin: false,
+        ws: true,
+    }));
+}
+
+app.use('/:channel', createProxyMiddleware({
+    target: '', // Placeholder target
+    changeOrigin: false,
+    ws: true,
+    router: (req) => {
+        // console.log('[router]', req.baseUrl, req.url, req.originalUrl, req.path);
+        //regular packets have baseUrl as /:channel, which we expect, and url as / for some reason, so always prefer to use baseUrl
+        //websocket packets have ONLY url, and it is not / but the correct value of /:channel so fall back to that if baseUrl is undefined
+        const channel = req.baseUrl?.split('/')[1] || req.url?.split('/')[1];
+        return `http://tenant-container-${channel}-svc:8000`;
+    },
+    // onProxyReqWs: (proxyReq, req, socket) => {
+    //     socket.setMaxListeners(20); // Increase the limit to handle more channels
+    // },
+    on: {
+        error: (err, req, res) => {
+            const now = + new Date();
+            const channel = req.baseUrl?.split('/')[1] || req.url?.split('/')[1];
+            console.error(`[proxy error] channel: ${channel} error:`, err.message);
+            res.status(404).send(`<h1>404 - Channel Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+<p>If this is your username, <a href="/api/auth/twitch">log in</a> and sign up to activate it.</p>
+<p>If you have already signed up but still see this page, contact me to troubleshoot.</p>
+<p><a href="/">back to homepage</a></p>
+<p>[main] timestamp: ${now}</p>`)
+        },
+    },
+}));
 
 //start the http server
 server.listen(process.env.PORT ?? 80, () => {

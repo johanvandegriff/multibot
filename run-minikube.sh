@@ -19,10 +19,10 @@ docker build -t "$DOCKER_USERNAME/multibot-tenant:latest" tenant-container
 # kubectl -n $ns delete deployment state-db
 # kubectl -n $ns delete service state-db
 kubectl -n $ns delete deployment main-container
-kubectl -n $ns delete service main-container
+kubectl -n $ns delete service main-container-svc
 for deployment in $(kubectl -n $ns get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
   kubectl -n $ns delete deployment $deployment
-  kubectl -n $ns delete service $deployment
+  kubectl -n $ns delete service $deployment-svc
 done
 
 kubectl -n $ns create secret generic app-secrets \
@@ -62,8 +62,8 @@ if [[ "$USE_LOAD_BALANCER" == true ]]; then
   minikube tunnel &
   ip_and_port=pending
   while echo $ip_and_port | grep pending > /dev/null; do
-      ip_and_port=$(kubectl -n $ns get services main-container | awk '{split($5,a,":"); print $4 ":" a[1]}' | tail -1)
-      # ip=$(kubectl -n $ns get services main-container | awk 'print $4' | tail -1)
+      ip_and_port=$(kubectl -n $ns get services main-container-svc | awk '{split($5,a,":"); print $4 ":" a[1]}' | tail -1)
+      # ip=$(kubectl -n $ns get services main-container-svc | awk 'print $4' | tail -1)
       echo "$ip_and_port"
       sleep 0.1
   done
@@ -76,7 +76,7 @@ if [[ "$USE_LOAD_BALANCER" == true ]]; then
   caddy run --config Caddyfile --adapter caddyfile --watch &
 else
   # kubectl -n $ns expose deployment main-container --type=NodePort --port=8000
-  kubectl -n $ns port-forward service/main-container 8000:8000 > /dev/null &
+  kubectl -n $ns port-forward service/main-container-svc 8000:8000 > /dev/null &
 fi
 kubectl -n $ns logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
 # read a
