@@ -371,10 +371,10 @@
                 </span>
                 <span v-if="channel_props.enabled">
                     <p v-if="channel === login || is_super_admin" class="alert gray-bg">
-                        Use <code>!setnickname</code> in the chat to show up here!
+                        Use <code>!nick</code> in the chat to show up here!
                     </p>
                     <p v-else class="alert green-bg">
-                        Use <code>!setnickname</code> in [[ channel ]]'s chat to show up here!
+                        Use <code>!nick</code> in [[ channel ]]'s chat to show up here!
                     </p>
                 </span>
                 <p v-else-if="!(channel === login || is_super_admin)" class="alert red-bg">

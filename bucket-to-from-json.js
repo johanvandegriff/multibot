@@ -3,11 +3,11 @@ const fs = require('fs');
 const dotenv = require('dotenv'); //for storing secrets in an env file
 dotenv.config({ path: SECRETS_FILE }) //bot API key and other info
 
-// const subdir = 'prod';
-const subdir = 'qa';
+const subdir = 'prod';
+// const subdir = 'qa';
 // const subdir = process.env.BUCKET_FOLDER;
-// const JSON_DB_FILE = '/srv/prod-data.json';
-const JSON_DB_FILE = '/srv/qa-data.json';
+const JSON_DB_FILE = 'prod-data.json';
+// const JSON_DB_FILE = '/srv/qa-data.json';
 
 const { JsonDB, Config } = require('node-json-db');
 const BucketDB = require('./bucket-db');

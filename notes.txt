@@ -85,11 +85,16 @@ NEW FEATURES TO ADD:
 +remove custom button since it cannot show arbitrary channels
 +change multistream-bot to multibot
 +move to the "multibot" namespace
-migrate data from v1 to v2
-deploy v2 on botbot.jjv.sh
-change TTL back to 3600
-move v2 to the main repo dir
++migrate data from v1 to v2
++deploy v2 on botbot.jjv.sh
++make jjv.sh all point to k8s and change TTL back to 3600
++move v2 to the main repo dir
++fix up README
+fix websockets
+redis backups
 
+link to twitch, yt, etc. on a channel page even when not logged in
+RTMP livestream splitting with 2nd tenant container
 standardize live chat connections
 decent looking UI
     +copy from old one and fix up
