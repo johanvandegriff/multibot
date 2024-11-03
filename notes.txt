@@ -116,7 +116,7 @@ maybe: dedicated proxy containers for channel-independent tasks, e.g. pronoun/em
 maybe: temporarily add more twitch/yt/owncast/kick chats for collabs
 maybe: move routing from main-container to k8s ingress or gateway API
 +404 page on tenant-container
-404 page on main-container (figure out how to not interfere with dynamically added proxies and wait_for_page)
++404 page on main-container (figure out how to not interfere with dynamically added proxies and wait_for_page)
 if a nonexistant page matches the twitch username requirements, offer to sign up
 better logging (might come for free with tenant container docker logs)
 feature toggles

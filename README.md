@@ -9,9 +9,9 @@ This is a livestream bot with multiple functions:
 * coming soon: OBS hosting - run OBS in the cloud, good if you have a bad connection, such as IRL streams
 
 ## Add to Your Channel
-Go to https://botbot.jjv.sh and click on "log in" at the top right. It will say `JJBotBot wants to access your account` (note that it only asks for permission to view your email and nothing else, so there is no way for it to change anything on your twitch account), click Authorize.
+Go to https://botbot.jjv.sh and click on "log in" at the top right. It will say `JJBotBot wants to access your account` (note that it only asks for permission to view your email and nothing else, so there is no way for it to change anything on your twitch account), click Authorize. Once you log in, click `sign up`, and after a few seconds it will redirect to your channel page.
 
-You are done! Chat members will now be able to type `!nick mynickname` to pick a nickname, and `!botpage` to pull up the webpage with all the nicknames. The bot will use the nickname to greet users who enter the chat.
+You are done! Chat members will now be able to type `!nick mynickname` to pick a nickname, and `!botpage` to pull up the webpage with all the nicknames. The bot will greet users who enter the chat by their nicknames.
 
 If you (the streamer) ever want to log in and edit/add a nickname manually, just type `!botpage` in chat and follow the link, then log in again and you can edit everything, and even disable the bot.
 

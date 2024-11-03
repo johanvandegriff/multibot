@@ -312,13 +312,15 @@ app.use('/:channel', createProxyMiddleware({
         error: (err, req, res) => {
             const now = + new Date();
             const channel = req.baseUrl?.split('/')[1] || req.url?.split('/')[1];
-            console.error(`[proxy error] channel: ${channel} error:`, err.message);
-            res.status(404).send(`<h1>404 - Channel Not Found</h1>
+            console.log('[main] 404', now, 'channel:', channel, 'error:', err.message);
+            if (typeof(res.status) === 'function') {
+                res.status(404).send(`<h1>404 - Channel Not Found</h1>
 <p>The requested URL was not found on this server.</p>
 <p>If this is your username, <a href="/api/auth/twitch">log in</a> and sign up to activate it.</p>
 <p>If you have already signed up but still see this page, contact me to troubleshoot.</p>
 <p><a href="/">back to homepage</a></p>
 <p>[main] timestamp: ${now}</p>`)
+            }
         },
     },
 }));

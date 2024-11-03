@@ -1357,7 +1357,7 @@ add_channel_prop_listener('enabled', async (old_value, new_value) => {
 
 app.use((req, res) => {
     const now = + new Date();
-    console.log('[tenant] 404', now, req.originalUrl);
+    console.log('[tenant] 404', now, 'channel:', TWITCH_CHANNEL, 'req.originalUrl:', req.originalUrl);
     res.status(404).send(`<h1>404 - Not Found</h1>
 <p>The requested URL was not found on this server.</p>
 <p><a href="/${TWITCH_CHANNEL}">back to channel page</a></p>
