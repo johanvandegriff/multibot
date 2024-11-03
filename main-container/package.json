@@ -9,6 +9,7 @@
     },
     "type": "module",
     "dependencies": {
+        "@fontsource/cabin": "^5.1.0",
         "@kubernetes/client-node": "^0.22.1",
         "connect-redis": "^7.1.1",
         "express": "^4.21.1",

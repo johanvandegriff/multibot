@@ -104,7 +104,7 @@ const server = http.createServer(app);
 // for consideration of using channel URLs directly, and having non-channel URLs be invalid usernames:
 // Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
 // need to make sure non-channel URLs contain a "-" or are 3 chars long, e.g. "/twitch-auth", "/log-out", "/new", "/api", etc.
-// if owncast is added as a primary login, make sure that the url has a "." in it, e.g. "johanv.net" to distinguish it from twitch
+// if owncast is added as a primary login, make sure that the url has a "." in it, e.g. "jjv.sh" to distinguish it from twitch
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 const CALLBACK_URL = process.env.BASE_URL + '/api/auth/twitch/callback';
@@ -269,6 +269,7 @@ app.get('/api/logout', function (req, res, next) {
 app.use('/vue.js', express.static('node_modules/vue/dist/vue.esm-browser.prod.js'));
 app.use('/favicon.ico', express.static('favicon.ico'));
 app.use('/favicon.png', express.static('favicon.png'));
+app.use('/api/fonts/cabin', express.static('node_modules/@fontsource/cabin'));
 
 // Define a simple template to safely generate HTML with values from user's profile
 const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));

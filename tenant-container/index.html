@@ -4,11 +4,16 @@
 <head>
     <title>JJBotBot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/api/fonts/cabin/400.css">
     <style>
         * {
             margin: 0;
             padding: 0;
             /* box-sizing: border-box; */
+        }
+
+        :root {
+            --mono-font: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
         }
 
         /*temp border*/
@@ -24,7 +29,6 @@
         body {
             height: 100%;
             line-height: 1.6;
-            font-family: "Inter", "Roobert", "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 18px;
             background-color: #202020;
             color: white;
@@ -37,7 +41,6 @@
         h5,
         h6 {
             line-height: 1.2;
-            font-family: "Roobert", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
         }
 
         #app {
@@ -64,8 +67,8 @@
             border: 1px solid red;
             border-radius: 5px;
             background-color: #611;
-            padding: 4px 4px 0px 4px;
-            font-family: 'Courier New', Courier, monospace;
+            padding: 4px;
+            font-family: var(--mono-font);
             font-weight: bold;
         }
 
@@ -93,7 +96,7 @@
         }
 
         .nickname {
-            font-family: 'Courier New', Courier, monospace;
+            font-family: var(--mono-font);
             font-weight: bold;
             /* font-size: smaller; */
         }
@@ -222,8 +225,8 @@
     </style>
 </head>
 
-<body>
-    <div id="app">
+<body id="app">
+    <div id="container" :style="{ 'font-family': channel_props.font }">
         <div id="login" v-if="!is_chat_fullscreen">
             <span v-if="is_logged_in">
                 <a v-if="login !== channel && is_onboarded" :href="'/' + login"><img :src="profile_image_url" /></a>
@@ -333,7 +336,7 @@
                                 <button
                                     @click="channel_props_edit.fwd_cmds_yt_twitch[i] = editing_fwd_item; editing_fwd_idx = undefined; save_channel_prop('fwd_cmds_yt_twitch')">done</button>
                             </span>
-                            <span v-else class="edit" v-if="is_logged_in && channel === login || is_super_admin"
+                            <span v-else class="edit" v-if="is_auth"
                                 @click="editing_fwd_idx = i; editing_fwd_item = cmd">✎ [[cmd]]
                             </span>
                             <span class="delete"
@@ -388,20 +391,20 @@
                             <button @click="save_nickname">done</button>
                         </span>
                         <span v-else>
-                            <span class="edit" v-if="is_logged_in && channel === login || is_super_admin"
+                            <span class="edit" v-if="is_auth"
                                 @click="editing_nickname = viewers[username].nickname; editing_username = username">✎
                             </span>
                             <span class="nickname">[[viewers[username].nickname]]</span>
                         </span>
                         <span class="equals"> = </span>
                         <span class="username">[[username]]</span>
-                        <span class="delete" v-if="is_logged_in && channel === login || is_super_admin">
+                        <span class="delete" v-if="is_auth">
                             &nbsp;<button class="custom_greetz" @click="set_custom_greetz(username)">custom greetz
                                 ([[ viewers[username].custom_greetz ?? 'none set' ]])</button>
                             <span class="delete" @click="delete_viewer(username)"> ⓧ</span>
                         </span>
                     </li>
-                    <li v-if="is_logged_in && channel === login || is_super_admin">
+                    <li v-if="is_auth">
                         <input v-model="new_nickname" style="width: 100px">
                         <span class="equals"> = </span>
                         <input v-model="new_username">
@@ -410,7 +413,7 @@
                     </li>
                 </ul>
             </span>
-            <span v-if="is_logged_in && channel === login || is_super_admin">
+            <span v-if="is_auth">
                 <br /><br /><br /><br />
                 <br /><br /><br /><br />
                 <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
@@ -423,8 +426,7 @@
                 <br />
                 <h2 style="display:inline">Chat</h2>
                 &nbsp;
-                <a class="button" target="_blank"
-                    :href="'/{{channel}}/chat?show_usernames=' + show_usernames + '&show_nicknames=' + show_nicknames + '&show_pronouns=' + show_pronouns">
+                <a class="button" target="_blank" href="/{{channel}}/chat">
                     &nbsp; pop-out
                     <svg style="width:20px" xmlns="http://www.w3.org/2000/svg" width="12" height="12">
                         <path fill="#fff" stroke="#36c" d="M1.5 4.518h5.982V10.5H1.5z" />
@@ -433,24 +435,50 @@
                         <path fill="#fff"
                             d="m9.995 2.004.022 4.885L8.2 5.07 5.32 7.95 4.09 6.723l2.882-2.88-1.85-1.852z" />
                     </svg>
-                </a><br />
-                show:
-                <label class="nowrap"><input type="checkbox" v-model="show_usernames">usernames</label>&nbsp;
-                <label class="nowrap"><input type="checkbox" v-model="show_nicknames">nicknames</label>&nbsp;
-                <label class="nowrap"><input type="checkbox" v-model="show_pronouns">pronouns</label>
+                </a>
+                <span v-if="is_auth">
+                    &nbsp;
+                    font:
+                    <select v-model="channel_props_edit.font" @change="save_font">
+                        <option v-if="!fonts.includes(channel_props_edit.font)" :value="channel_props_edit.font">[[
+                            font_name(channel_props_edit.font) ]]</option>
+                        <option v-for="f in fonts" :value="f">[[ font_name(f) ]]</option>
+                    </select>
+                    <span v-if="actual_font !== font_name(channel_props_edit.font)"> fallback: [[ actual_font ]]</span>
+
+                    text shadow:
+                    <select v-model="channel_props_edit.text_shadow" @change="save_text_shadow">
+                        <option v-if="!text_shadows.includes(channel_props_edit.text_shadow)"
+                            :value="channel_props_edit.text_shadow">[[
+                            channel_props_edit.text_shadow ]]</option>
+                        <option v-for="item in text_shadows" :value="item">[[ item ]]</option>
+                    </select>
+                    <br />
+                    show:
+                    <label class="nowrap"><input type="checkbox" v-model="channel_props_edit.show_usernames"
+                            @change="this.save_channel_prop('show_usernames')">usernames</label>&nbsp;
+                    <label class="nowrap"><input type="checkbox" v-model="channel_props_edit.show_nicknames"
+                            @change="this.save_channel_prop('show_nicknames')">nicknames</label>&nbsp;
+                    <label class="nowrap"><input type="checkbox" v-model="channel_props_edit.show_pronouns"
+                            @change="this.save_channel_prop('show_pronouns')">pronouns</label>
+                </span>
             </div>
-            <ul id="messages"
-                :style="is_chat_fullscreen ? { 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' } : {}">
+            <ul id="messages" :style="Object.assign({},
+                    { 'text-shadow': channel_props.text_shadow },
+                    is_chat_fullscreen ? { 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' } : {}
+                )">
                 <li v-for="msg in chat">
                     <!-- TODO: get the correct username color from youtube -->
                     <span class="bold" :style="{ color: get_user_color(msg.username) }">
-                        <span v-if="show_pronouns && msg.pronouns" class="pronoun"
+                        <span v-if="channel_props.show_pronouns && msg.pronouns" class="pronoun"
                             :style="{ 'border-color': get_user_color(msg.username) }">
                             [[ msg.pronouns ]]
                         </span>
-                        <span v-if="show_usernames || !(show_nicknames && msg.nickname)">[[ msg.username ]]</span>
-                        <span v-if="show_nicknames && msg.nickname">
-                            <span v-if="show_usernames"> (<span class="nickname">[[msg.nickname]]</span>)</span>
+                        <span v-if="channel_props.show_usernames || !(channel_props.show_nicknames && msg.nickname)">
+                            [[ msg.username ]]</span>
+                        <span v-if="channel_props.show_nicknames && msg.nickname">
+                            <span v-if="channel_props.show_usernames"> (<span class="nickname">
+                                    [[msg.nickname]]</span>)</span>
                             <span v-else> <span class="nickname">[[msg.nickname]]</span></span>
                         </span>
                     </span>
@@ -467,6 +495,10 @@
                 </li>
             </ul>
         </div>
+        <span id="font_test" style="position: absolute; visibility: hidden; white-space: nowrap;">
+            `1234567890-=qwertyuiop[]\asdfghjkl;'zxcvbnm,./~!@#$%^&amp;*()_+QWERTYUIOP{}|ASDFGHJKL:&quot;ZXCVBNM&lt;&gt;?
+        </span>
+        <span style="font-family: Cabin;"></span><!-- needed to make sure the font is loaded locally -->
     </div>
 
     <script type="module">
@@ -502,6 +534,7 @@
             delimiters: ['[[', ']]'],
             data() {
                 return {
+                    page_hash: '{{page_hash}}',
                     color_hash: new ColorHash({ lightness: [0.5, 0.6, 0.7, 0.8], saturation: [0.6, 0.7, 0.8, 0.9, 1] }),
                     user_colors: {},
                     channel: '{{channel}}',
@@ -515,9 +548,6 @@
                     is_super_admin: '{{is_super_admin}}' === 'true',
                     is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
                     bgcolor: '{{bgcolor}}',
-                    show_usernames: '{{show_usernames}}' !== 'false',
-                    show_nicknames: '{{show_nicknames}}' !== 'false',
-                    show_pronouns: '{{show_pronouns}}' !== 'false',
                     enabled_cooldown: '{{enabled_cooldown}}',
                     enabled_grayed_out: false,
                     chat: [],
@@ -532,6 +562,11 @@
                         owncast_url: undefined,
                         kick_username: undefined,
                         kick_chatroom_id: undefined,
+                        show_usernames: undefined,
+                        show_nicknames: undefined,
+                        show_pronouns: undefined,
+                        text_shadow: undefined,
+                        font: undefined,
                     },
                     channel_props_edit: {},
                     editing_username: undefined,
@@ -545,6 +580,38 @@
                     editing_fwd_item: undefined,
                     new_cmd: '',
                     confirm_delete: false,
+                    fonts: [
+                        undefined,
+                        `"Cabin", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
+                        `Arial, sans-serif`,
+                        `system-ui, sans-serif`,
+                        `'Segoe Print', 'Bradley Hand', Chilanka, TSCu_Comic, casual, cursive`,
+                        `Charter, 'Bitstream Charter', 'Sitka Text', Cambria, serif`,
+                        `'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', P052, serif`,
+                        `Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', source-sans-pro, sans-serif`,
+                        `Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif`,
+                        `Optima, Candara, 'Noto Sans', source-sans-pro, sans-serif`,
+                        `Inter, Roboto, 'Helvetica Neue', 'Arial Nova', 'Nimbus Sans', Arial, sans-serif`,
+                        `'Nimbus Mono PS', 'Courier New', monospace`,
+                        `ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace`,
+                        `Bahnschrift, 'DIN Alternate', 'Franklin Gothic Medium', 'Nimbus Sans Narrow', sans-serif-condensed, sans-serif`,
+                        `ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, Manjari, 'Arial Rounded MT', 'Arial Rounded MT Bold', Calibri, source-sans-pro, sans-serif`,
+                        `Rockwell, 'Rockwell Nova', 'Roboto Slab', 'DejaVu Serif', 'Sitka Small', serif`,
+                        `Superclarendon, 'Bookman Old Style', 'URW Bookman', 'URW Bookman L', 'Georgia Pro', Georgia, serif`,
+                        `Didot, 'Bodoni MT', 'Noto Serif Display', 'URW Palladio L', P052, Sylfaen, serif`,
+                        `Impact, Haettenschweiler, "Franklin Gothic Bold", Charcoal, "Helvetica Inserat", "Bitstream Vera Sans Bold", "Arial Black", sans-serif`,
+                        `custom`,
+                    ],
+                    actual_font: undefined,
+                    text_shadows: [
+                        '',
+                        '1px 1px 2px black',
+                        '2px 2px 4px black',
+                        '1px 1px 2px pink',
+                        '1px 1px 2px red',
+                        '2px 0 10px #FC0',
+                        'custom',
+                    ],
                 }
             },
             methods: {
@@ -604,6 +671,12 @@
                             }
                             return msg;
                         });
+                    } else if (data.type === 'page_hash') {
+                        if (this.page_hash !== m.page_hash) {
+                            if (this.is_chat_fullscreen || !this.is_auth || confirm('new version available, reload the page? (if you have unsaved work, cancel this, save, and reload the page)')) {
+                                window.location.reload();
+                            }
+                        }
                     } else {
                         console.log('unknown message:', data);
                     }
@@ -636,7 +709,7 @@
                     return await this.set_channel_prop(prop_name, this.channel_props_edit[prop_name]);
                 },
                 get_channel_prop(prop_name) {
-                    fetch(`{{channel}}/channel_props/${prop_name}`)
+                    fetch(`/{{channel}}/channel_props/${prop_name}`)
                         .then(res => res.json())
                         .then(json => {
                             console.log(prop_name, json);
@@ -809,6 +882,78 @@ ${JSON.stringify(json, undefined, 2)}`);
                             });
                     }
                 },
+                rem_quotes(s) {
+                    return s?.replaceAll('"', '').replaceAll("'", '');
+                },
+                font_name(font) {
+                    return this.rem_quotes(font?.split(',')[0]) ?? 'browser default';
+                },
+                save_font() {
+                    if (this.channel_props_edit.font === 'custom') {
+                        const new_font = prompt('Enter custom font name. Can specify multiple, separated by commas. If it has a space in the name, surround it in quotes, for example "Noto Sans":')?.trim();
+                        if (!new_font) {
+                            this.$nextTick(() => {
+                                this.channel_props_edit.font = this.channel_props.font; //go back to old value (next tick cuz this is already the @change)
+                            });
+                            return;
+                        } else {
+                            this.channel_props_edit.font = new_font;
+                        }
+                    }
+                    this.save_channel_prop('font');
+                },
+                save_text_shadow() {
+                    if (this.channel_props_edit.text_shadow === 'custom') {
+                        const new_text_shadow = prompt('Enter custom CSS for text_shadow. For reference, see this page: https://developer.mozilla.org/en-US/docs/Web/CSS/text-shadow')?.trim();
+                        if (!new_text_shadow) {
+                            this.$nextTick(() => {
+                                this.channel_props_edit.text_shadow = this.channel_props.text_shadow; //go back to old value (next tick cuz this is already the @change)
+                            });
+                            return;
+                        } else {
+                            this.channel_props_edit.text_shadow = new_text_shadow;
+                        }
+                    }
+                    this.save_channel_prop('text_shadow');
+                },
+                async detect_used_font(selector) {
+                    await document.fonts.ready; //wait for the font to be applied fully
+                    const element = document.querySelector(selector);
+                    const computed_style = window.getComputedStyle(element);
+                    const fonts = computed_style.fontFamily.split(',').map(font => font.trim());
+
+                    const browser_computed_style = window.getComputedStyle(document.querySelector('body'));
+
+                    //test element for measuring font width/height
+                    const test = document.querySelector('#font_test');
+
+                    //get initial dimensions with the browser's default font stack
+                    test.style.fontFamily = browser_computed_style.fontFamily;
+                    const browser_width = test.offsetWidth;
+                    const browser_height = test.offsetHeight;
+
+                    //get initial dimensions with the full font stack
+                    test.style.fontFamily = computed_style.fontFamily;
+                    const full_width = test.offsetWidth;
+                    const full_height = test.offsetHeight;
+
+                    //if the width and height with the full stack are the same as the browser font,
+                    //assume none of the fonts worked and it is the browser font
+                    if (full_width === browser_width && full_height === browser_height) {
+                        return browser_computed_style.fontFamily;
+                    }
+
+                    //compare with each font individually
+                    for (const font of fonts) {
+                        test.style.fontFamily = font;
+                        if (test.offsetWidth === full_width && test.offsetHeight === full_height) {
+                            return this.rem_quotes(font);
+                        }
+                    }
+
+                    return null;
+                },
+
             },
             mounted() {
                 this.websocket_connect();
@@ -827,13 +972,21 @@ ${JSON.stringify(json, undefined, 2)}`);
             },
             watch: {
                 channel(new_channel, old_channel) {
-                    console.log(old_channel, new_channel);
                     window.location = '/' + new_channel;
+                },
+                'channel_props.font': {
+                    handler: async function (new_font, old_font) {
+                        this.actual_font = await this.detect_used_font('#container');
+                    },
+                    immediate: true
                 },
             },
             computed: {
                 is_onboarded() {
                     return this.channels.includes(this.login);
+                },
+                is_auth() {
+                    return this.is_logged_in && this.channel === this.login || this.is_super_admin;
                 }
             },
         }).mount('#app');

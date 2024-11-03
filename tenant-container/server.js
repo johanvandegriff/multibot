@@ -12,6 +12,11 @@ const DEFAULT_CHANNEL_PROPS = {
     owncast_url: '',
     kick_username: '',
     kick_chatroom_id: '',
+    show_usernames: true,
+    show_nicknames: true,
+    show_pronouns: true,
+    text_shadow: '1px 1px 2px black',
+    font: `"Cabin", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
 }
 const DEFAULT_VIEWER_PROPS = {
     nickname: undefined,
@@ -103,6 +108,7 @@ import express from 'express';
 import session from 'express-session';
 import RedisStore from 'connect-redis';
 import fs from 'fs';
+import crypto from 'crypto';
 import handlebars from 'handlebars';
 import bodyParser from 'body-parser';
 import ws, { WebSocketServer } from 'ws';
@@ -118,15 +124,16 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 wss.on('connection', (client) => {
     console.log('[websocket] client connected!');
-    client.on('message', (msg) => {
-        console.log('[websocket] message: ' + msg);
-        // msg = JSON.parse(msg);
-        // broadcast(msg.type, msg.content);
-    });
+    broadcast('page_hash', { page_hash: index_page_hash }, [client]);
+    // client.on('message', (msg) => {
+    //     console.log('[websocket] message: ' + msg);
+    //     // msg = JSON.parse(msg);
+    //     // broadcast(msg.type, msg.content);
+    // });
 });
-function broadcast(msg_type, msg_content) {
+function broadcast(msg_type, msg_content, clients = wss.clients) {
     const msg = JSON.stringify({ type: msg_type, content: msg_content });
-    for (const client of wss.clients) {
+    for (const client of clients) {
         if (client.readyState === ws.OPEN) {
             client.send(msg);
         }
@@ -148,7 +155,7 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
         }
         await redis_client.del(`channels/${TWITCH_CHANNEL}/viewers`); //delete viewer list
 
-        for (const prop_name in Object.keys(DEFAULT_CHANNEL_PROPS)) {
+        for (const prop_name in DEFAULT_CHANNEL_PROPS) {
             await redis_client.del(`channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`); //delete channel prop
         }
         await set_viewer_prop(process.env.TWITCH_BOT_USERNAME, 'nickname', DEFAULT_BOT_NICKNAME);
@@ -187,12 +194,15 @@ app.use('/color-hash.js', express.static('node_modules/color-hash/dist/esm.js'))
 app.use('/tmi-utils', express.static('node_modules/tmi-utils/dist/esm', { 'extensions': ['js'] })); //add .js if not specified
 
 // Define a simple template to safely generate HTML with values from user's profile
-const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
+const index_page = fs.readFileSync('index.html', 'utf8');
+const index_page_hash = crypto.createHash('sha256').update(index_page).digest('hex');
+const template = handlebars.compile(index_page);
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
 app.get('/', async (req, res) => {
     const user = req.session?.passport?.user;
     res.send(template({
+        page_hash: index_page_hash,
         user: user,
         channel: TWITCH_CHANNEL,
         channels: await list_channels(),
@@ -204,6 +214,7 @@ app.get('/', async (req, res) => {
 app.get('/chat', async (req, res) => {
     const user = req.session?.passport?.user;
     res.send(template({
+        page_hash: index_page_hash,
         user: user,
         channel: TWITCH_CHANNEL,
         channels: await list_channels(),
@@ -212,11 +223,11 @@ app.get('/chat', async (req, res) => {
 
         is_chat_fullscreen: true,
         bgcolor: req.query.bgcolor ?? 'transparent',
-        show_usernames: req.query.show_usernames,
-        show_nicknames: req.query.show_nicknames,
-        show_pronouns: req.query.show_pronouns,
     }));
 });
+
+//how many websocket clients are connected
+app.get('/ws/num_clients', (req, res) => { res.send(`${wss.clients.size}`); });
 
 
 const channel_prop_listeners = {
@@ -449,7 +460,10 @@ app.post('/clear_chat', channel_auth_middleware, async (req, res) => {
 
 app.get('/chat_history', async (req, res) => { res.send(JSON.stringify(chat_history)); });
 
-const chat_history = [];
+const chat_history = [
+    // { "source": "twitch", "username": "JJVanVan", "nickname": "JJ", "pronouns": "Any", "color": "#8A2BE2", "emotes": { "emotesv2_30050f4353aa4322b25b6b044703e5d1": ["5-12"] }, "text": "test PogBones abc123" },
+    // { "source": "twitch", "username": "JJBotBot", "nickname": "🤖", "pronouns": "It/Its", "color": null, "emotes": {}, "text": "yo yo JJ" },
+];
 async function clear_chat(channel) {
     chat_history.length = 0;
     console.log(`CLEAR CHAT`);
@@ -539,6 +553,13 @@ function get_pronouns(username) {
             };
             //send the pronouns to retroactively apply to any chat messages that don't have them
             broadcast('pronouns', { username: username, pronouns: pronouns });
+
+            //also apply it to the chat history
+            chat_history.forEach(msg => {
+                if (msg.username === username && msg.pronouns === undefined) {
+                    msg.pronouns = pronouns;
+                }
+            });
         })();
     }
     return pronoun_cache[username]?.pronouns;
@@ -818,7 +839,7 @@ async function handle_command(context, msg, username) {
     } else if (command === '!botpage') {
         twitch_try_say(`see the nicknames and other bot info at ${process.env.BASE_URL}/${TWITCH_CHANNEL}`);
     } else if (command === '!multichat') {
-        twitch_try_say(`see the multichat at ${process.env.BASE_URL}/${TWITCH_CHANNEL}/chat?show_usernames=true&show_nicknames=true&show_pronouns=true and adjust the 'true' values to 'false' to hide the properties as desired`);
+        twitch_try_say(`see the multichat at ${process.env.BASE_URL}/${TWITCH_CHANNEL}/chat (change the font and show/hide options on the !botpage)`);
     } else if (command === '!clear') {
         if (has_permission(context)) {
             clear_chat();
@@ -873,12 +894,12 @@ async function handle_command(context, msg, username) {
         //         .replaceAll(`@${process.env.TWITCH_BOT_USERNAME}`, '')
         //         .replaceAll(`@${process.env.TWITCH_BOT_USERNAME}`.toLowerCase(), '');
         //     console.log(`[bot] asking CARL: ${message}`);
-        //     let url = 'https://games.johanv.net/carl_api?user=' + encodeURIComponent(message);
+        //     let url = 'https://games.jjv.sh/carl_api?user=' + encodeURIComponent(message);
         //     const reply_parent = context['reply-parent-msg-body'];
         //     if (reply_parent) {
         //         const carl_said = carl_history[reply_parent];
         //         if (carl_said) {
-        //             url = 'https://games.johanv.net/carl_api?carl=' + encodeURIComponent(carl_said) + '&user=' + encodeURIComponent(message);
+        //             url = 'https://games.jjv.sh/carl_api?carl=' + encodeURIComponent(carl_said) + '&user=' + encodeURIComponent(message);
         //             console.log(`[bot] found reply parent in carl_history: "${reply_parent}" => "${carl_said}"`);
         //         }
         //     }
@@ -1178,7 +1199,7 @@ async function connect_to_owncast() {
         //Received: {"id":"dZl60kLng","timestamp":"2022-02-27T23:37:24.330263605Z","type":"USER_JOINED","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]}}
         //message:
         // Received: {"body":"hello world","id":"En3e0kY7g","timestamp":"2022-02-27T23:37:28.502353829Z","type":"CHAT","user":{"id":"_R_eAkL7g","displayName":"priceless-roentgen2","displayColor":123,"createdAt":"2022-02-27T23:37:24.250217566Z","previousNames":["priceless-roentgen2"]},"visible":true}
-        // Received: {"body":"<p>Johan :tux:  liked that this stream went live.</p>\n","id":"uep4JgKIg","image":"https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png","link":"https://fosstodon.org/users/johanv","timestamp":"2023-12-30T16:29:25.371196748Z","title":"johanv@fosstodon.org","type":"FEDIVERSE_ENGAGEMENT_LIKE","user":{"displayName":"johanv.net"}}
+        // Received: {"body":"<p>Johan :tux:  liked that this stream went live.</p>\n","id":"uep4JgKIg","image":"https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png","link":"https://fosstodon.org/users/johanv","timestamp":"2023-12-30T16:29:25.371196748Z","title":"johanv@fosstodon.org","type":"FEDIVERSE_ENGAGEMENT_LIKE","user":{"displayName":"jjv.sh"}}
         //simplified: {"body": "hello world", "user": {"displayName": "priceless-roentgen"}}
         if ('body' in message && 'user' in message && 'displayName' in message.user) {
             const name = message.user.displayName;
@@ -1247,7 +1268,7 @@ async function connect_to_owncast() {
 
                     //multiple json objects can be sent in the same message, separated by newlines
                     message.utf8Data.split('\n').forEach(text => on_message_received(JSON.parse(text)));
-                    // on_message_received({ "body": "<p>Johan :tux:  liked that this stream went live.</p>\n", "id": "uep4JgKIg", "image": "https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png", "link": "https://fosstodon.org/users/johanv", "timestamp": "2023-12-30T16:29:25.371196748Z", "title": "johanv@fosstodon.org", "type": "FEDIVERSE_ENGAGEMENT_LIKE", "user": { "displayName": "johanv.net" } });
+                    // on_message_received({ "body": "<p>Johan :tux:  liked that this stream went live.</p>\n", "id": "uep4JgKIg", "image": "https://cdn.fosstodon.org/accounts/avatars/000/002/248/original/e68dc0e84d281224.png", "link": "https://fosstodon.org/users/johanv", "timestamp": "2023-12-30T16:29:25.371196748Z", "title": "johanv@fosstodon.org", "type": "FEDIVERSE_ENGAGEMENT_LIKE", "user": { "displayName": "jjv.sh" } });
                 }
             });
 

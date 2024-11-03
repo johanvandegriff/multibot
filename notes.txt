@@ -95,10 +95,16 @@ NEW FEATURES TO ADD:
 add cpu limits and horizontal pod autoscaling
 redis backups
 
++keep track of version and if mismatch, send reload request
++auto reload if popout chat, otherwise ask to reload
++font selector: twitch font (current), discord font ('gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; check license (it was not allowed so found a similar one)), arial, etc.
++add text-shadow to chat: darken the background behind the text while keeping the text at full opacity
 link to twitch, yt, etc. on a channel page even when not logged in
 RTMP livestream splitting with 2nd tenant container
 OBS container hosting with 3rd tenant container
 probably not: owncast hosting?
+text streaming with asciiradio that somehow forwards to video stream, maybe thru OBS container
+
 standardize live chat connections
 decent looking UI
     +copy from old one and fix up
@@ -150,8 +156,6 @@ fun stats on main page
 
 FROM PREVIOUS TODO:
 //===PRIORITY===
-//TODO keep track of version and if mismatch, send reload request
-//TODO auto reload if popout chat or public dashboard page, otherwise ask to reload
 //TODO public dashboard page
 //TODO channel point redeems, bits, subs, etc.
 //TODO function for super admin to import/export json for 1 channel or all

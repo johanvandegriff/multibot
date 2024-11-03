@@ -4,11 +4,16 @@
 <head>
     <title>JJBotBot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/api/fonts/cabin/400.css">
     <style>
         * {
             margin: 0;
             padding: 0;
             /* box-sizing: border-box; */
+        }
+
+        :root {
+            --mono-font: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
         }
 
         /*temp border*/
@@ -24,7 +29,7 @@
         body {
             height: 100%;
             line-height: 1.6;
-            font-family: "Inter", "Roobert", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-family: "Cabin", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 18px;
             background-color: #202020;
             color: white;
@@ -37,7 +42,6 @@
         h5,
         h6 {
             line-height: 1.2;
-            font-family: "Roobert", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
         }
 
         #login {
@@ -59,8 +63,8 @@
             border: 1px solid red;
             border-radius: 5px;
             background-color: #611;
-            padding: 4px 4px 0px 4px;
-            font-family: 'Courier New', Courier, monospace;
+            padding: 4px;
+            font-family: var(--mono-font);
             font-weight: bold;
         }
 
@@ -112,8 +116,8 @@
     </style>
 </head>
 
-<body>
-    <div id="app">
+<body id="app">
+    <div id="container">
         <div id="login" v-if="!is_chat_fullscreen">
             <span v-if="is_logged_in">
                 <a v-if="login !== channel && is_onboarded" :href="'/' + login"><img :src="profile_image_url" /></a>
