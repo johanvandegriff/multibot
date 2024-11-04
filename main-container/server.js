@@ -1,4 +1,5 @@
-const REDIS_CHANNELS_POLL_MS = 1000;
+const REDIS_NAMESPACE = 'multibot';
+const PREDIS = REDIS_NAMESPACE + ':';
 
 import redis from 'redis';
 import http from 'http';
@@ -78,7 +79,7 @@ async function delete_tenant_container(channel) {
 
 const redis_client = redis.createClient({
     url: process.env.STATE_DB_URL,
-    password: process.env.STATE_DB_PASSWORD
+    password: process.env.STATE_DB_PASSWORD,
 });
 redis_client.on('error', err => console.log('Redis Client Error', err));
 
@@ -86,9 +87,9 @@ const proxy_overrides = JSON.parse(process.env.PROXY_OVERRIDES ?? '{}');
 (async () => {
     await redis_client.connect();
     for (const channel in proxy_overrides) {
-        await redis_client.sAdd('channels', channel);
+        await redis_client.sAdd(`${PREDIS}channels`, channel);
     }
-    const channels = await redis_client.sMembers('channels');
+    const channels = await redis_client.sMembers(`${PREDIS}channels`);
     console.log('channels onboarded:', channels);
     for (const channel of channels) {
         //don't await, start them in parallel
@@ -109,7 +110,7 @@ const server = http.createServer(app);
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 const CALLBACK_URL = process.env.BASE_URL + '/api/auth/twitch/callback';
 app.use(session({
-    store: new RedisStore({ client: redis_client }),
+    store: new RedisStore({ client: redis_client, prefix: PREDIS + 'sessions/' }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -190,7 +191,7 @@ app.get('/api/auth/twitch', passport.authenticate('twitch', { scope: ['user_read
 // Set route for OAuth redirect
 app.get('/api/auth/twitch/callback', passport.authenticate('twitch', { failureRedirect: '/' }), async function (req, res) {
     const login = req.session?.passport?.user?.login
-    if (await redis_client.sIsMember('channels', login)) {
+    if (await redis_client.sIsMember(`${PREDIS}channels`, login)) {
         //if the channel has a tenant container, go there
         res.redirect('/' + login);
     } else {
@@ -221,7 +222,7 @@ app.get('/api/onboard/:channel', channel_auth_middleware, async function (req, r
         res.status(400).send('invalid channel'); //400 Bad Request
         return;
     }
-    if (await redis_client.sIsMember('channels', channel)) {
+    if (await redis_client.sIsMember(`${PREDIS}channels`, channel)) {
         res.status(409).send('channel already onboarded'); //409 Conflict
         return;
     }
@@ -229,7 +230,7 @@ app.get('/api/onboard/:channel', channel_auth_middleware, async function (req, r
         res.status(500).send('error creating tenant'); //500 Internal Server Error
         return;
     }
-    await redis_client.sAdd('channels', channel); //add it to the list of channels in redis
+    await redis_client.sAdd(`${PREDIS}channels`, channel); //add it to the list of channels in redis
     console.log('onboarded', channel);
     res.send('ok');
 });
@@ -244,7 +245,7 @@ app.get('/api/offboard/:channel', channel_auth_middleware, async function (req, 
         res.status(400).send('invalid channel'); //400 Bad Request
         return;
     }
-    if (!await redis_client.sIsMember('channels', channel)) {
+    if (!await redis_client.sIsMember(`${PREDIS}channels`, channel)) {
         res.status(409).send('channel not onboarded'); //409 Conflict
         return;
     }
@@ -252,8 +253,8 @@ app.get('/api/offboard/:channel', channel_auth_middleware, async function (req, 
         res.status(500).send('error deleting tenant'); //500 Internal Server Error
         return;
     }
-    await redis_client.del(`channels/${channel}/channel_props/did_first_run`); //remove the first run prop so it will execute the first run again if onboarded
-    await redis_client.sRem('channels', channel); //remove it from the list of channels in redis
+    await redis_client.del(`${PREDIS}channels/${channel}/channel_props/did_first_run`); //remove the first run prop so it will execute the first run again if onboarded
+    await redis_client.sRem(`${PREDIS}channels`, channel); //remove it from the list of channels in redis
     console.log('offboarded', channel);
     res.send('ok');
 });
@@ -278,7 +279,7 @@ const template = handlebars.compile(fs.readFileSync('index.html', 'utf8'));
 app.get('/', async function (req, res) {
     const user = req.session?.passport?.user;
     res.send(template({
-        channels: await redis_client.sMembers('channels'),
+        channels: await redis_client.sMembers(`${PREDIS}channels`),
         is_super_admin: is_super_admin(user?.login),
         user: user,
     }));
@@ -314,7 +315,7 @@ app.use('/:channel', createProxyMiddleware({
             const now = + new Date();
             const channel = req.baseUrl?.split('/')[1] || req.url?.split('/')[1];
             console.log('[main] 404', now, 'channel:', channel, 'error:', err.message);
-            if (typeof(res.status) === 'function') {
+            if (typeof res.status === 'function') {
                 res.status(404).send(`<h1>404 - Channel Not Found</h1>
 <p>The requested URL was not found on this server.</p>
 <p>If this is your username, <a href="/api/auth/twitch">log in</a> and sign up to activate it.</p>

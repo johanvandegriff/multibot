@@ -11,4 +11,4 @@ export STATE_DB_URL=rediss://jjbotbot-redis-do-user-4587946-0.f.db.ondigitalocea
 #have to go to your cloud provider and temporarily allow access to redis cluster from this machine
 
 #node bucket-to-from-json.js
-node json-to-redis.js
+node old-json-to-redis.js

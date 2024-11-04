@@ -1,3 +1,6 @@
+const REDIS_NAMESPACE = 'multibot';
+const PREDIS = REDIS_NAMESPACE + ':';
+
 const TWITCH_CHANNEL = process.env.TWITCH_CHANNEL; //the channel that this tenant container is set to operate on
 const CHAT_HISTORY_LENGTH = 100;
 const HOUR_IN_MILLISECONDS = 1 * 60 * 60 * 1000;
@@ -142,7 +145,7 @@ function broadcast(msg_type, msg_content, clients = wss.clients) {
 
 const redis_client = redis.createClient({
     url: process.env.STATE_DB_URL,
-    password: process.env.STATE_DB_PASSWORD
+    password: process.env.STATE_DB_PASSWORD,
 });
 
 redis_client.on('error', err => console.log('Redis Client Error', err));
@@ -151,12 +154,12 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
     if (!await get_channel_prop('did_first_run')) {
         console.log('FIRST RUN');
         for (const username of await list_viewers()) {
-            await redis_client.del(`channels/${TWITCH_CHANNEL}/viewers/${username}`); //delete viewer data
+            await redis_client.del(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers/${username}`); //delete viewer data
         }
-        await redis_client.del(`channels/${TWITCH_CHANNEL}/viewers`); //delete viewer list
+        await redis_client.del(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers`); //delete viewer list
 
         for (const prop_name in DEFAULT_CHANNEL_PROPS) {
-            await redis_client.del(`channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`); //delete channel prop
+            await redis_client.del(`${PREDIS}channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`); //delete channel prop
         }
         await set_viewer_prop(process.env.TWITCH_BOT_USERNAME, 'nickname', DEFAULT_BOT_NICKNAME);
         await set_channel_prop('did_first_run', true);
@@ -166,7 +169,7 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
 
 //credit to https://github.com/twitchdev/authentication-node-sample (apache 2.0 license) for the auth code
 app.use(session({
-    store: new RedisStore({ client: redis_client }),
+    store: new RedisStore({ client: redis_client, prefix: PREDIS + 'sessions/' }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -263,21 +266,21 @@ function add_viewer_prop_listener(prop_name, func) {
 
 
 async function list_viewers() {
-    return await redis_client.sMembers(`channels/${TWITCH_CHANNEL}/viewers`);
+    return await redis_client.sMembers(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers`);
 }
 
 async function list_channels() {
-    return await redis_client.sMembers('channels');
+    return await redis_client.sMembers(`${PREDIS}channels`);
 }
 
 async function delete_viewer(username) {
-    await redis_client.sRem(`channels/${TWITCH_CHANNEL}/viewers`, username);
-    await redis_client.del(`channels/${TWITCH_CHANNEL}/viewers/${username}`);
+    await redis_client.sRem(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers`, username);
+    await redis_client.del(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers/${username}`);
     broadcast('delete_viewer', { username: username });
 }
 
 async function get_channel_prop(prop_name) {
-    const prop_value = await redis_client.get(`channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`);
+    const prop_value = await redis_client.get(`${PREDIS}channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`);
     if (prop_value === null) {
         return DEFAULT_CHANNEL_PROPS[prop_name];
     } else {
@@ -292,9 +295,9 @@ async function set_channel_prop(prop_name, prop_value) {
         old_prop_value = await get_channel_prop(prop_name);
     }
     if (prop_value === undefined) {
-        await redis_client.del(`channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`);
+        await redis_client.del(`${PREDIS}channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`);
     } else {
-        await redis_client.set(`channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`, JSON.stringify(prop_value));
+        await redis_client.set(`${PREDIS}channels/${TWITCH_CHANNEL}/channel_props/${prop_name}`, JSON.stringify(prop_value));
     }
     //make sure to run the listeners after the value is changed in redis
     if (channel_prop_listeners[prop_name]) {
@@ -306,7 +309,7 @@ async function set_channel_prop(prop_name, prop_value) {
 }
 
 async function get_viewer_prop(username, prop_name) {
-    const prop_value = await redis_client.hGet(`channels/${TWITCH_CHANNEL}/viewers/${username}`, prop_name);
+    const prop_value = await redis_client.hGet(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers/${username}`, prop_name);
     if (prop_value === null) {
         return DEFAULT_VIEWER_PROPS[prop_name];
     } else {
@@ -314,7 +317,7 @@ async function get_viewer_prop(username, prop_name) {
     }
 }
 async function get_viewer_props(username) {
-    const viewer_props = await redis_client.hGetAll(`channels/${TWITCH_CHANNEL}/viewers/${username}`);
+    const viewer_props = await redis_client.hGetAll(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers/${username}`);
     for (const prop_name of Object.keys(viewer_props)) {
         viewer_props[prop_name] = JSON.parse(viewer_props[prop_name]);
     }
@@ -328,10 +331,10 @@ async function set_viewer_prop(username, prop_name, prop_value) {
         old_prop_value = await get_viewer_prop(username, prop_name);
     }
     if (prop_value === undefined) {
-        await redis_client.hDel(`channels/${TWITCH_CHANNEL}/viewers/${username}`, prop_name); //delete just 1 prop
+        await redis_client.hDel(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers/${username}`, prop_name); //delete just 1 prop
     } else {
-        await redis_client.sAdd(`channels/${TWITCH_CHANNEL}/viewers`, username);
-        await redis_client.hSet(`channels/${TWITCH_CHANNEL}/viewers/${username}`, { [prop_name]: JSON.stringify(prop_value) });
+        await redis_client.sAdd(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers`, username);
+        await redis_client.hSet(`${PREDIS}channels/${TWITCH_CHANNEL}/viewers/${username}`, { [prop_name]: JSON.stringify(prop_value) });
     }
     //make sure to run the listeners after the value is changed in redis
     if (viewer_prop_listeners[prop_name]) {
