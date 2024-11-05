@@ -35,6 +35,13 @@ spec:
       - name: main-container
         image: {{IMAGE}}
         imagePullPolicy: {{IMAGE_PULL_POLICY}}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 400m
+            memory: 256Mi
         env:
         - name: BASE_URL
           valueFrom:
@@ -98,6 +105,37 @@ spec:
     port: 8000
     targetPort: 80
   type: {{SERVICE_TYPE}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  namespace: multibot
+  name: main-container-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: main-container
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  namespace: multibot
+  name: main-container-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: main-container
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

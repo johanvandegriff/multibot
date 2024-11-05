@@ -419,6 +419,11 @@
                 <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
                     @click="offboard(channel)" :disabled="!confirm_delete">DELETE ACCOUNT</button>
             </span>
+            <br /><br /><br /><br />
+            <span style="font-size: smaller;">
+                This site's <a target="_blank" href="https://codeberg.org/johanvandegriff/multibot">source code</a> is
+                released under the AGPL-3.0 license.
+            </span>
         </div>
 
         <div :id="is_chat_fullscreen ? 'chat_fullscreen' : 'chat'">
@@ -468,7 +473,6 @@
                     is_chat_fullscreen ? { 'background-color': [[ bgcolor ]], 'height': '100vh', 'overflow': 'hidden' } : {}
                 )">
                 <li v-for="msg in chat">
-                    <!-- TODO: get the correct username color from youtube -->
                     <span class="bold" :style="{ color: get_user_color(msg.username) }">
                         <span v-if="channel_props.show_pronouns && msg.pronouns" class="pronoun"
                             :style="{ 'border-color': get_user_color(msg.username) }">

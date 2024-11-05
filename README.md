@@ -1,4 +1,6 @@
-# multibot (JJBotBot)
+# multibot
+[botbot.jjv.sh](https://botbot.jjv.sh)
+
 This is a livestream bot with multiple functions:
 * aggregate chat - pull chat from twitch, youtube, owncast, and kick into a common chat page
 * forward commands - listens for people typing commands on youtube and sends them over to twitch for your other bots to ingest, such as `!sr billy joel just the way u are`
@@ -146,6 +148,8 @@ Create a digitalocean kubernetes (k8s) cluster, I put it in the NYC3 region and 
 * Connecting to Kubernetes - Choose manual, then click `download the cluster configuration file`, then run `kubectl --kubeconfig=~/Downloads/jjbotbot-k8s-cluster-kubeconfig.yaml get nodes` to make sure it can connect.
 
 Replace `KUBECONFIG` in `.env.prod` with the path to the config file you downloaded.
+
+For autoscaling, we need the metrics server, go [here](https://marketplace.digitalocean.com/apps/kubernetes-metrics-server) and click "Install App" (as instructed on the [autoscaling](https://docs.digitalocean.com/products/kubernetes/how-to/set-up-autoscaling/) guide).
 
 Create a digitalocean (or whatever cloud provider you use) redis cluster in the same region, I called it `jjbotbot-redis` and go through the getting started steps:
 * Restrict inbound connections to only the k8s cluster and node pool

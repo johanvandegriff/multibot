@@ -92,19 +92,24 @@ NEW FEATURES TO ADD:
 +fix up README
 +fix websockets
 +fix intermittent timeouts (issue was deployment and service being named the same thing)
-add cpu limits and horizontal pod autoscaling
-redis backups
++add cpu limits and horizontal pod autoscaling
++add pod disruption budget to make nodes scale down better
++redis backups
++move redis data to a "namespace" (just a prefix "multibot:" on all the key names)
 
 +keep track of version and if mismatch, send reload request
 +auto reload if popout chat, otherwise ask to reload
 +font selector: twitch font (current), discord font ('gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; check license (it was not allowed so found a similar one)), arial, etc.
 +add text-shadow to chat: darken the background behind the text while keeping the text at full opacity
+
 link to twitch, yt, etc. on a channel page even when not logged in
 RTMP livestream splitting with 2nd tenant container
 OBS container hosting with 3rd tenant container
 probably not: owncast hosting?
 text streaming with asciiradio that somehow forwards to video stream, maybe thru OBS container
 
+redis lua scripts
+make the namespace configurable for redis and k8s
 standardize live chat connections
 decent looking UI
     +copy from old one and fix up
@@ -157,18 +162,17 @@ fun stats on main page
 FROM PREVIOUS TODO:
 //===PRIORITY===
 //TODO public dashboard page
+//TODO follows
 //TODO channel point redeems, bits, subs, etc.
 //TODO function for super admin to import/export json for 1 channel or all
 //TODO play audio thru multichat page, or separate alerts page
 //TODO able to enable by typing !enable/!disable in the bot's twitch chat  opts.channels.push(process.env.TWITCH_BOT_USERNAME);
-//TODO test latency of DO spaces vs storj + minio
-//TODO maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage and chat connections
-//TODO system to backup the data
++maybe migrate to app platform? or cloudways or k8s since they have better autoscaling. either way will require refactoring the secrets storage and chat connections
++system to backup the data
 //TODO bot able to post on youtube
 
 //===EASY===
-//TODO args to !multichat command to change the link, and tell it in message
-//TODO link to source code on the page
++link to source code on the page
 
 //===BUGS===
 //TODO failed to get chat messages after saying it was connected on the 1min timer
@@ -179,7 +183,7 @@ still skips some youtube messages
 //===REFACTOR===
 +abstract out the sharing of state thru sockets?
 +rethink the api paths to something like /api/channels/:channel/nicknames/:username etc.
-//TODO make it able to scale horizontally
++make it able to scale horizontally
 
 //TODO allow mods to use the admin page for the streamer
 //TODO give the bot "watching without audio/video" badge
@@ -189,7 +193,7 @@ still skips some youtube messages
 //TODO better UI for greetz threshold
 //TODO bot respond to alerts
 //TODO separate vip chat
-//TODO commands in the bot's chat to play videos on the 24/7 stream
+//TODO commands in the bot's chat to play videos on the bot's stream
 //TODO a way for super admin to call an api to get/set/delete anything in the database, for example delete last seen time
 //TODO twitch badges
 //TODO twitch /me
@@ -200,7 +204,4 @@ still skips some youtube messages
 //TODO when !songlist is typed on youtube, reply with `The song list for this channel is available at https://nightbot.tv/t/[channel]/song_requests`
 //TODO summary of youtube chat in twitch chat and vice versa? what about owncast? exponential combinatorics as more chats are added
 //TODO command forwarding from owncast to twitch?
-//TODO publish bucket-db as a npm package
-//TODO local s3 in docker with artificial delay time (& update README)
-//TODO optimize getting enabled channels, maybe store it in the bucket at /enabled, where an empty file named the channel means the channel is enabled, and no file means disabled
-
+//TODO get the correct username color from youtube
