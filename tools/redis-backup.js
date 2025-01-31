@@ -24,7 +24,7 @@ const DEFAULT_CHANNEL_PROPS = {
 
 require('dotenv').config({ path: ENV_FILE });
 const fs = require('fs');
-const redis = require('../main-container/node_modules/redis');
+const redis = require('redis');
 const argv = require('yargs/yargs')(process.argv.slice(2)).argv;
 
 if (!argv._[0]) {
@@ -42,6 +42,8 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
 (async () => {
     try {
         await redis_client.connect();
+        console.log('Connected');
+
         const channels = await redis_client.sMembers(`${PREDIS}channels`);
         const data = { channels: {} };
 
@@ -51,6 +53,7 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
             for (const prop_name of Object.keys(DEFAULT_CHANNEL_PROPS)) {
                 const prop_value = await redis_client.get(`${PREDIS}channels/${channel}/channel_props/${prop_name}`);
                 if (prop_value !== null) {
+                    console.log(channel, prop_name, prop_value);
                     data.channels[channel][prop_name] = JSON.parse(prop_value);
                 }
             }
@@ -63,6 +66,7 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
                 const viewerProps = await redis_client.hGetAll(`${PREDIS}channels/${channel}/viewers/${viewer}`);
                 data.channels[channel].viewers[viewer] = {};
 
+                console.log(channel, viewer, viewerProps);
                 for (const prop_name in viewerProps) {
                     data.channels[channel].viewers[viewer][prop_name] = JSON.parse(viewerProps[prop_name]);
                 }

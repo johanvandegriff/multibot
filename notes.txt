@@ -107,6 +107,9 @@ RTMP livestream splitting with 2nd tenant container
 OBS container hosting with 3rd tenant container
 probably not: owncast hosting?
 text streaming with asciiradio that somehow forwards to video stream, maybe thru OBS container
+option to split or combine chats
+option to read out the chat with TTS
+only allow 24-7 streams at 360p
 
 redis lua scripts
 make the namespace configurable for redis and k8s
@@ -136,8 +139,6 @@ toggle verbose logging?
 handle display name being different language than username (e.g. porukun21) just check lowercase and if different, include username, unless nickname set (username becomes a defacto nickname)
 admin feature toggle to enable/disable signups
 option to pay for signups
-option to split or combine chats
-database backup and restore
 database editor
 twitch mods have permission to access the streamer's settings page
 permissions system (super admin, streamer, mods, etc.)
@@ -146,7 +147,6 @@ at least add owncast as a primary login method
 revamp CARL chatbot to be part of the system with moderation tools in place
 CARL should be its own container that autoscales
 random nickname if none provided
-option to read out the chat with TTS
 timeout on signup/delete account to avoid spam
 make messages disappear after a timeout?
 bot greets users without a nickname

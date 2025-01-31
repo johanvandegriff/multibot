@@ -24,7 +24,7 @@ const DEFAULT_CHANNEL_PROPS = {
 
 require('dotenv').config({ path: ENV_FILE });
 const fs = require('fs');
-const redis = require('../main-container/node_modules/redis');
+const redis = require('redis');
 const argv = require('yargs/yargs')(process.argv.slice(2)).argv;
 const clearRedis = argv.clearRedis || false;
 
@@ -43,6 +43,7 @@ redis_client.on('error', err => console.log('Redis Client Error', err));
 (async () => {
     try {
         await redis_client.connect();
+        console.log('Connected');
 
         if (clearRedis) {
             await redis_client.flushDb();

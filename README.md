@@ -25,7 +25,7 @@ For youtube, enter your youtube channel where it says `enter youtube channel URL
 To add the multichat to OBS, type `!multichat` in your twitch chat and the bot will reply with a link you can add to an OBS browser source. If you want to change the settings, then go to the bot page and change the `show usernames` and `show nicknames` checkboxes as desired, then copy the `pop-out` chat link near the top right of the page and add that to your OBS browser source instead.
 
 ### (Optional) Mod the Bot
-Sometimes when there are a lot of users running commands, the bot sends messages too quickly and twitch doesn't display all of them. You can fix this my making the bot a moderator by typing `/mod JJBotBot` in chat. This is optional, but will avoid missing any messages.
+Sometimes when there are a lot of users running commands, the bot sends messages too quickly and twitch doesn't display all of them. You can fix this by making the bot a moderator by typing `/mod JJBotBot` in chat. This is optional, but will avoid missing any messages.
 
 # Technical Info for Nerds
 Everything past this point is completely optional and geared towards programmers, going into detail on how to run a copy of the bot locally, deploy it to kubernetes in the cloud, and modify the code to do whatever you want.
@@ -96,7 +96,7 @@ Then do `./run-compose.sh` to build and run the various containers in docker.
 
 Navigate to `http://localhost:8000` in your browser to see the app. The main page is hosted by `main-container`, which also has a router that proxys the streamer pages to the individual instances of `tenant-container`. They share data such as login sessions through a redis `state-db` container. When deploying, it is important to note that the main container can have replicas, but each tenant container can only have 1 instance because of the nature of the live chat connections.
 
-After you have run it once with `./run-compose.sh`, you can use `./run-node.sh` to run it with nodejs directly (redis which runs in docker, but that never needs to be rebuilt) which is faster for testing small changes.
+After you have run it once with `./run-compose.sh`, you can use `./run-node.sh` to run it with nodejs directly (redis still runs in docker, but that never needs to be rebuilt) which is faster for testing small changes.
 
 Running the app with docker or node directly has some limitations - it is hardcoded to run only on certain twitch channels, and the sign up function will not work since it has no way of creating more instances while running this way. If you want to use different channels, replace `jjvanvan` and `minecraft1167890` in `run-node.sh` and/or `compose.yaml`, or follow the next section to run it locally in kubernetes.
 

@@ -52,6 +52,47 @@ rm app-secrets.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/cloud/deploy.yaml
 kubectl create namespace cert-manager
 kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.16.1/cert-manager.yaml
+
+# patch it to add resource limits:
+for deployment in cert-manager cert-manager-cainjector cert-manager-webhook; do
+  kubectl patch deployment $deployment -n cert-manager \
+    --type='json' -p='[
+      {
+        "op": "add",
+        "path": "/spec/template/spec/containers/0/resources",
+        "value": {
+          "requests": {
+            "cpu": "25m",
+            "memory": "16Mi"
+          },
+          "limits": {
+            "cpu": "100m",
+            "memory": "256Mi"
+          }
+        }
+      }
+    ]'
+done
+
+#resolve DO operational readiness check:
+#Validating webhook with a TimeoutSeconds value smaller than 1 second or greater than 29 seconds will block upgrades.
+kubectl patch mutatingwebhookconfiguration cert-manager-webhook \
+  --type='json' -p='[
+    {
+      "op": "add",
+      "path": "/webhooks/0/timeoutSeconds",
+      "value": 10
+    }
+  ]'
+kubectl patch validatingwebhookconfiguration cert-manager-webhook \
+  --type='json' -p='[
+    {
+      "op": "add",
+      "path": "/webhooks/0/timeoutSeconds",
+      "value": 10
+    }
+  ]'
+
 cat prod-issuer.yaml | sed "s/{{EMAIL}}/$EMAIL_ADDRESS/g" | kubectl create -f -
 
 # kubectl -n $ns delete deployment main-container
