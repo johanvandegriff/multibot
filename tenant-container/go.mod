@@ -9,10 +9,9 @@ toolchain go1.23.5
 require (
 	github.com/TwiN/go-away v1.6.14
 	github.com/abhinavxd/youtube-live-chat-downloader/v2 v2.0.3
-	github.com/boj/redistore v1.3.0
 	github.com/gempir/go-twitch-irc/v4 v4.2.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/gorilla/sessions v1.4.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/johanvandegriff/kick-chat-wrapper v0.0.0-20250202052742-a566d4cbe8ff
 	github.com/redis/go-redis/v9 v9.7.0
@@ -21,7 +20,5 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/gomodule/redigo v1.9.2 // indirect
-	github.com/gorilla/securecookie v1.1.2 // indirect
 	golang.org/x/text v0.20.0 // indirect
 )

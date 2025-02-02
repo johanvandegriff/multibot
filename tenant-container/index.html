@@ -551,6 +551,7 @@
                     channel: '{{.channel}}',
                     channels: '{{.channels}}'.split(','),
                     user: JSON.parse('{{.user}}'),
+                    is_super_admin: '{{.is_super_admin}}' == 'true',
                     is_chat_fullscreen: '{{.is_chat_fullscreen}}' === 'true',
                     bgcolor: '{{.bgcolor}}',
                     enabled_cooldown: '{{.enabled_cooldown}}',
@@ -960,9 +961,6 @@ ${text}`);
             computed: {
                 is_logged_in() {
                     return !!this.user;
-                },
-                is_super_admin() {
-                    return this.user?.is_super_admin === true;
                 },
                 is_onboarded() {
                     return this.channels.includes(this.user?.login);

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html/template"
@@ -17,9 +18,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/boj/redistore"
 	"github.com/gorilla/mux"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -36,18 +37,119 @@ import (
 const (
 	REDIS_NAMESPACE = "multibot"
 	PREDIS          = REDIS_NAMESPACE + ":"
+
+	SESSION_COOKIE = "session_id"         // Name of the cookie that stores the session ID.
+	SESSION_PREFIX = PREDIS + "sessions/" // Prefix for session keys in Redis.
+	SESSION_TTL    = 30 * time.Minute     // How long a session lives in Redis.
 )
 
 var (
 	rdb               *redis.Client
 	k8sClient         *kubernetes.Clientset
-	sessionStore      *redistore.RediStore
 	twitchOAuthConfig *oauth2.Config
 	indexTemplate     *template.Template
 
 	DISABLE_K8S                 = os.Getenv("DISABLE_K8S") == "true"
 	TWITCH_SUPER_ADMIN_USERNAME = os.Getenv("TWITCH_SUPER_ADMIN_USERNAME")
+	STATE_DB_URL                = os.Getenv("STATE_DB_URL")
+	STATE_DB_PASSWORD           = os.Getenv("STATE_DB_PASSWORD")
+	SESSION_SECRET              = os.Getenv("SESSION_SECRET")
+	BASE_URL                    = os.Getenv("BASE_URL")
+	TWITCH_CLIENT_ID            = os.Getenv("TWITCH_CLIENT_ID")
+	TWITCH_SECRET               = os.Getenv("TWITCH_SECRET")
 )
+
+// Session holds session data.
+type Session struct {
+	ID   string                 `json:"id"`
+	Data map[string]interface{} `json:"data"`
+}
+
+func saveSession(ctx context.Context, session *Session) error {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(session); err != nil {
+		return err
+	}
+	key := SESSION_PREFIX + session.ID
+	return rdb.Set(ctx, key, buf.Bytes(), SESSION_TTL).Err()
+}
+
+func loadSession(ctx context.Context, sessionID string) (*Session, error) {
+	key := SESSION_PREFIX + sessionID
+	data, err := rdb.Get(ctx, key).Bytes() // Use .Bytes() when storing raw bytes
+	if err == redis.Nil {
+		return &Session{
+			ID:   sessionID,
+			Data: make(map[string]interface{}),
+		}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	var session Session
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&session); err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// sessionMiddleware is an HTTP middleware that manages sessions.
+func sessionMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		var sess *Session
+
+		// Try to get the session cookie.
+		cookie, err := r.Cookie(SESSION_COOKIE)
+		if err != nil || cookie.Value == "" {
+			// No valid session cookie found. Create a new session.
+			newSessionID := uuid.New().String()
+			sess = &Session{
+				ID:   newSessionID,
+				Data: make(map[string]interface{}),
+			}
+			// Set the session cookie.
+			http.SetCookie(w, &http.Cookie{
+				Name:     SESSION_COOKIE,
+				Value:    newSessionID,
+				Path:     "/",
+				HttpOnly: true,
+				// Optionally set Secure, SameSite, etc.
+			})
+		} else {
+			// Load the session from Redis.
+			sess, err = loadSession(ctx, cookie.Value)
+			if err != nil {
+				// On error, log it and create a new session.
+				log.Printf("Failed to load session: %v. Creating a new session.", err)
+				newSessionID := uuid.New().String()
+				sess = &Session{
+					ID:   newSessionID,
+					Data: make(map[string]interface{}),
+				}
+				http.SetCookie(w, &http.Cookie{
+					Name:     SESSION_COOKIE,
+					Value:    newSessionID,
+					Path:     "/",
+					HttpOnly: true,
+				})
+			}
+		}
+
+		// Store the session in the context.
+		ctx = context.WithValue(ctx, "session", sess)
+
+		// Let the next handler handle the request.
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+		// Save the session back to Redis.
+		if err := saveSession(ctx, sess); err != nil {
+			log.Printf("Failed to save session: %v", err)
+		}
+	})
+}
+
 
 func loadTenantYAML(channel string) (*appsv1.Deployment, *corev1.Service, error) {
 	fileBytes, err := os.ReadFile("tenant-container.yaml")
@@ -167,11 +269,11 @@ func isSuperAdmin(user *twitchUser) bool {
 
 // small helper to retrieve the current user from the session
 func getSessionUser(r *http.Request) *twitchUser {
-	session, err := sessionStore.Get(r, "session-name")
-	if err != nil {
+	session, ok := r.Context().Value("session").(*Session)
+	if !ok {
 		return nil
 	}
-	user, ok := session.Values["twitch_user"].(*twitchUser)
+	user, ok := session.Data["twitch_user"].(*twitchUser)
 	if !ok {
 		return nil
 	}
@@ -270,9 +372,11 @@ func offboardHandler(w http.ResponseWriter, r *http.Request) {
 
 // logoutHandler -> /api/logout
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
-	session, _ := sessionStore.Get(r, "session-name")
-	delete(session.Values, "twitch_user")
-	session.Save(r, w)
+	session, ok := r.Context().Value("session").(*Session)
+	if !ok {
+		return
+	}
+	delete(session.Data, "twitch_user")
 	// optional: redirect to homepage or other
 	returnTo := r.URL.Query().Get("returnTo")
 	if returnTo == "" {
@@ -420,16 +524,12 @@ func twitchCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("twitchUser parsed from twitch:", user.Login)
 
 	// Save user to session
-	session, err := sessionStore.Get(r, "session-name")
-	if err != nil {
+	session, ok := r.Context().Value("session").(*Session)
+	if !ok {
 		http.Error(w, fmt.Sprintf("Session error: %v", err), http.StatusInternalServerError)
 		return
 	}
-	session.Values["twitch_user"] = user // or &user, depending on your type
-	if err := session.Save(r, w); err != nil {
-		http.Error(w, "Could not save session", http.StatusInternalServerError)
-		return
-	}
+	session.Data["twitch_user"] = &user
 
 	channel := user.Login
 	inSet, err := rdb.SIsMember(ctx, PREDIS+"channels", channel).Result()
@@ -489,41 +589,23 @@ func main() {
 	if port == "" {
 		port = "80"
 	}
-	redisURL := os.Getenv("STATE_DB_URL")
-	redisPass := os.Getenv("STATE_DB_PASSWORD")
-	sessionSecret := os.Getenv("SESSION_SECRET")
-	baseURL := os.Getenv("BASE_URL")
-
-	twitchClientID := os.Getenv("TWITCH_CLIENT_ID")
-	twitchSecret := os.Getenv("TWITCH_SECRET")
 
 	// --------------------------------------------------------------------------
 	// 2) Set up Redis
 	// --------------------------------------------------------------------------
-	opt, err := redis.ParseURL(redisURL)
+	opt, err := redis.ParseURL(STATE_DB_URL)
 	if err != nil {
 		log.Fatalf("failed to parse redis URL: %v", err)
 	}
-	if redisPass != "" {
-		opt.Password = redisPass
-	}
+	opt.Password = STATE_DB_PASSWORD
 	rdb = redis.NewClient(opt)
 
-	if err := rdb.Ping(context.Background()).Err(); err != nil {
+	ctx := context.Background()
+	if err := rdb.Ping(ctx).Err(); err != nil {
 		log.Fatalf("redis ping error: %v", err)
-	} else {
-		log.Println("Connected to Redis!")
 	}
+	log.Println("Connected to Redis!")
 
-	// --------------------------------------------------------------------------
-	// 3) Set up session store in Redis
-	// --------------------------------------------------------------------------
-	sessionStore, err = redistore.NewRediStoreWithDB(10, "tcp", opt.Addr, opt.Password, "0", []byte(sessionSecret))
-	if err != nil {
-		log.Fatalf("failed to create redis session store: %v", err)
-	}
-	defer sessionStore.Close()
-	sessionStore.SetKeyPrefix(PREDIS + "sessions/")
 
 	// --------------------------------------------------------------------------
 	// 4) Connect to Kubernetes (in-cluster)
@@ -542,7 +624,6 @@ func main() {
 	// --------------------------------------------------------------------------
 	// 5) Pre-create any tenant containers for existing channels in Redis
 	// --------------------------------------------------------------------------
-	ctx := context.Background()
 	channels, _ := rdb.SMembers(ctx, PREDIS+"channels").Result()
 	log.Printf("channels onboarded: %v\n", channels)
 	if !DISABLE_K8S {
@@ -556,9 +637,9 @@ func main() {
 	// 6) Set up Twitch OAuth config
 	// --------------------------------------------------------------------------
 	twitchOAuthConfig = &oauth2.Config{
-		ClientID:     twitchClientID,
-		ClientSecret: twitchSecret,
-		RedirectURL:  baseURL + "/api/auth/twitch/callback",
+		ClientID:     TWITCH_CLIENT_ID,
+		ClientSecret: TWITCH_SECRET,
+		RedirectURL:  BASE_URL + "/api/auth/twitch/callback",
 		Scopes:       []string{"user_read"}, // Example
 		Endpoint:     twitch.Endpoint,
 	}
@@ -577,15 +658,8 @@ func main() {
 	// --------------------------------------------------------------------------
 	router := mux.NewRouter()
 
-	// sessions middleware
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			// If you want to load the session for each request:
-			_, _ = sessionStore.Get(req, "session-name")
-			next.ServeHTTP(w, req)
-		})
-	})
-
+	// Register the session middleware so that all routes have session handling.
+	router.Use(sessionMiddleware)
 	// for consideration of using channel URLs directly, and having non-channel URLs be invalid usernames:
 	// Your Twitch username must be between 4 and 25 characters—no more, no less. Secondly, only letters A-Z, numbers 0-9, and underscores (_) are allowed. All other special characters are prohibited, but users are increasingly calling for the restriction to be relaxed in the future.
 	// need to make sure non-channel URLs contain a "-" or are 3 chars long, e.g. "/twitch-auth", "/log-out", "/new", "/api", etc.
@@ -630,7 +704,7 @@ func main() {
 		targetHost := fmt.Sprintf("http://tenant-container-%s-svc:8000", channel)
 		parsedURL, err := url.Parse(targetHost)
 		if err != nil {
-			log.Printf("error parsing target host: %v\n", err)
+			log.Printf("error parsing target host: %v", err)
 			http.NotFound(w, req)
 			return
 		}

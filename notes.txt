@@ -104,11 +104,57 @@ NEW FEATURES TO ADD:
 
 MIGRATE FROM NODEJS TO GOLANG:
 +measure the memory, cpu, etc. usage before deploying golang (this is the reason for migrating)
-    NAME                             CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
-    jjbotbot-k8s-node-pool-1-gsdpb   62m          6%     1063Mi          67%       
-    jjbotbot-k8s-node-pool-1-gsdpj   35m          3%     1089Mi          69%       
-    jjbotbot-k8s-node-pool-1-gsdpr   40m          4%     1069Mi          67%       
-    jjbotbot-k8s-node-pool-2-gchh8   69m          3%     1859Mi          59%   
+NAMESPACE        NAME                                                 CPU(cores)   MEMORY(bytes)   
+cert-manager     cert-manager-9f64787fb-vrvj8                         1m           27Mi            
+cert-manager     cert-manager-cainjector-56c6b7f795-lb67j             1m           35Mi            
+cert-manager     cert-manager-webhook-84d5dfd488-8x52n                1m           14Mi            
+ingress-nginx    ingress-nginx-controller-7d56585cd5-b4lpp            1m           48Mi            
+kube-system      cilium-4ns56                                         19m          242Mi           
+kube-system      cilium-bwn6f                                         12m          180Mi           
+kube-system      cilium-g2nst                                         16m          183Mi           
+kube-system      cilium-wzzdn                                         11m          182Mi           
+kube-system      coredns-c5c6457c-nwwhk                               2m           23Mi            
+kube-system      coredns-c5c6457c-vrhhj                               2m           23Mi            
+kube-system      cpc-bridge-proxy-2qkrt                               0m           1Mi             
+kube-system      cpc-bridge-proxy-542qw                               0m           1Mi             
+kube-system      cpc-bridge-proxy-74dpc                               1m           2Mi             
+kube-system      cpc-bridge-proxy-wbtsc                               0m           1Mi             
+kube-system      csi-do-node-5xbqm                                    1m           10Mi            
+kube-system      csi-do-node-g7bbg                                    1m           14Mi            
+kube-system      csi-do-node-l6cs7                                    1m           10Mi            
+kube-system      csi-do-node-wmrkc                                    1m           10Mi            
+kube-system      do-node-agent-5l2z6                                  0m           24Mi            
+kube-system      do-node-agent-blf9m                                  0m           19Mi            
+kube-system      do-node-agent-f7lkh                                  0m           20Mi            
+kube-system      do-node-agent-ws54w                                  0m           24Mi            
+kube-system      hubble-relay-67597fb8-9sk57                          1m           23Mi            
+kube-system      hubble-ui-79957d9f7b-pjf27                           1m           22Mi            
+kube-system      konnectivity-agent-5vrjl                             1m           9Mi             
+kube-system      konnectivity-agent-dfszf                             1m           10Mi            
+kube-system      konnectivity-agent-jtpjd                             1m           9Mi             
+kube-system      konnectivity-agent-zj9mq                             1m           10Mi            
+kube-system      kube-proxy-b76lp                                     1m           19Mi            
+kube-system      kube-proxy-gr4l5                                     1m           21Mi            
+kube-system      kube-proxy-k79mg                                     1m           18Mi            
+kube-system      kube-proxy-xkj6t                                     1m           18Mi            
+metrics-server   metrics-server-f65cd588d-2kqx6                       3m           34Mi            
+metrics-server   metrics-server-f65cd588d-qxc2s                       3m           36Mi            
+multibot         main-container-5fbbf7cbbd-42sxg                      0m           80Mi            
+multibot         main-container-5fbbf7cbbd-fxh4t                      0m           77Mi            
+multibot         tenant-container-fernsmaximum-748847894f-62lm4       1m           85Mi            
+multibot         tenant-container-gmlradio-6c78c456c8-7h459           1m           87Mi            
+multibot         tenant-container-hakotori-64db67684f-clf5m           5m           81Mi            
+multibot         tenant-container-jjvanvan-5f58994c94-h25tb           1m           104Mi           
+multibot         tenant-container-minecraft1167890-6db7d7df9c-9jp2d   1m           87Mi            
+multibot         tenant-container-nathanshinelive-6949d547fc-dpm94    0m           70Mi            
+multibot         tenant-container-raq583-57648c4699-74jjq             1m           84Mi            
+multibot         tenant-container-thevictoriavixen-667d47556c-k9mk4   1m           83Mi            
+multibot         tenant-container-zoetak-66ccdb656f-7lwwh             0m           84Mi            
+NAME                             CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+jjbotbot-k8s-node-pool-1-gsdpb   62m          6%     1063Mi          67%       
+jjbotbot-k8s-node-pool-1-gsdpj   35m          3%     1089Mi          69%       
+jjbotbot-k8s-node-pool-1-gsdpr   40m          4%     1069Mi          67%       
+jjbotbot-k8s-node-pool-2-gchh8   69m          3%     1859Mi          59%   
 +rewrite main container
 +get twitch login and redis session working
 +fix proxy
@@ -145,11 +191,52 @@ MIGRATE FROM NODEJS TO GOLANG:
 +say "connected/disconnected owncast chat" in twitch chat
 +fix popout fullscreen chat bgcolor logic
 +commit code
-deploy to k8s
-measure the resource usage after migrating
++fix redis session issue
++fix super admin detection
++deploy to k8s
++measure the resource usage after migrating (much better! at least for this app, k8s itself has a lot of overhead)
+NAMESPACE        NAME                                                 CPU(cores)   MEMORY(bytes)   
+cert-manager     cert-manager-9f64787fb-vrvj8                         2m           27Mi            
+cert-manager     cert-manager-cainjector-56c6b7f795-lb67j             2m           41Mi            
+cert-manager     cert-manager-webhook-84d5dfd488-8x52n                1m           14Mi            
+ingress-nginx    ingress-nginx-controller-7d56585cd5-b4lpp            7m           46Mi            
+kube-system      cilium-4ns56                                         25m          255Mi           
+kube-system      cilium-wzzdn                                         12m          206Mi           
+kube-system      coredns-c5c6457c-nwwhk                               4m           25Mi            
+kube-system      coredns-c5c6457c-vrhhj                               4m           25Mi            
+kube-system      cpc-bridge-proxy-74dpc                               1m           2Mi             
+kube-system      cpc-bridge-proxy-wbtsc                               1m           1Mi             
+kube-system      csi-do-node-g7bbg                                    1m           14Mi            
+kube-system      csi-do-node-wmrkc                                    1m           10Mi            
+kube-system      do-node-agent-f7lkh                                  1m           20Mi            
+kube-system      do-node-agent-ws54w                                  0m           24Mi            
+kube-system      hubble-relay-67597fb8-9sk57                          1m           23Mi            
+kube-system      hubble-ui-79957d9f7b-pjf27                           1m           22Mi            
+kube-system      konnectivity-agent-5vrjl                             1m           10Mi            
+kube-system      konnectivity-agent-dfszf                             2m           10Mi            
+kube-system      kube-proxy-k79mg                                     1m           20Mi            
+kube-system      kube-proxy-xkj6t                                     1m           20Mi            
+metrics-server   metrics-server-f65cd588d-2kqx6                       3m           33Mi            
+metrics-server   metrics-server-f65cd588d-qxc2s                       4m           35Mi            
+multibot         main-container-57f7dd95c4-lbmtt                      1m           11Mi            
+multibot         main-container-59bcbbdfc5-wm9rt                      1m           11Mi            
+multibot         tenant-container-fernsmaximum-77544c6d8b-b8w5f       1m           7Mi             
+multibot         tenant-container-gmlradio-797dc77f65-f6p68           1m           8Mi             
+multibot         tenant-container-hakotori-84c66dc6ff-rlb6t           11m          11Mi            
+multibot         tenant-container-jjvanvan-7477b6c584-kk28d           1m           8Mi             
+multibot         tenant-container-minecraft1167890-84b88b75c7-9575p   0m           7Mi             
+multibot         tenant-container-nathanshinelive-7c7657c9dc-cfn68    0m           7Mi             
+multibot         tenant-container-raq583-7b56b5b7c6-dvdks             1m           8Mi             
+multibot         tenant-container-thevictoriavixen-7cdf46fcd8-dqzsh   1m           7Mi             
+multibot         tenant-container-zoetak-7dd5d4c68-5gsp2              1m           10Mi            
+NAME                             CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+jjbotbot-k8s-node-pool-1-gsdpb   52m          5%     989Mi           62%       
+jjbotbot-k8s-node-pool-2-gchh8   135m         7%     1978Mi          63%       
++commit code
 
 NEW FEATURES TO ADD:
 +on frontend, update nickname in chat when it changes
+move session stuff to its own file
 link to twitch, yt, etc. on a channel page even when not logged in
 RTMP livestream splitting with 2nd tenant container
 OBS container hosting with 3rd tenant container

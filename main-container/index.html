@@ -199,6 +199,7 @@
                     channel: '',
                     channels: '{{.channels}}'.split(','),
                     user: JSON.parse('{{.user}}'),
+                    is_super_admin: '{{.is_super_admin}}' == 'true',
                     onboard_progress: undefined,
                     super_admin_channel_to_onboard: '',
                     confirm_delete: false,
@@ -305,9 +306,6 @@
             computed: {
                 is_logged_in() {
                     return !!this.user;
-                },
-                is_super_admin() {
-                    return this.user?.is_super_admin === true;
                 },
                 is_onboarded() {
                     return this.channels.includes(this.user?.login);
