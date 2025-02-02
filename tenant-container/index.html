@@ -4,7 +4,7 @@
 <head>
     <title>JJBotBot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/api/fonts/cabin/400.css">
+    <link rel="stylesheet" href="/api/static/fonts/cabin/400.css">
     <style>
         * {
             margin: 0;
@@ -229,15 +229,17 @@
     <div id="container" :style="{ 'font-family': channel_props.font }">
         <div id="login" v-if="!is_chat_fullscreen">
             <span v-if="is_logged_in">
-                <a v-if="login !== channel && is_onboarded" :href="'/' + login"><img :src="profile_image_url" /></a>
-                <img v-else :src="profile_image_url" />
+                <a v-if="user?.login !== channel && is_onboarded" :href="'/' + user?.login"><img
+                        :src="user?.profile_image_url" /></a>
+                <img v-else :src="user?.profile_image_url" />
                 <div class="right">
                     &nbsp;
-                    <a v-if="login !== channel && is_onboarded" :href="'/' + login">[[display_name]]</a>
-                    <span v-else>[[display_name]]</span>
+                    <a v-if="user?.login !== channel && is_onboarded"
+                        :href="'/' + user?.login">[[user?.display_name]]</a>
+                    <span v-else>[[user?.display_name]]</span>
                     <span v-if="is_super_admin">&nbsp;<span id="super_admin">SUPER ADMIN</span></span>
                     &nbsp;
-                    <a href="/api/logout?returnTo={{channel}}">log out</a>
+                    <a href="/api/logout?returnTo={{.channel}}">log out</a>
                     &nbsp;
                 </div>
             </span>
@@ -256,31 +258,34 @@
                 Channel:
                 <select v-model="channel">
                     <option selected :value="channel">[[ channel ]]</option>
-                    <option v-if="is_logged_in && is_onboarded && channel !== login" :value="login">[[ login
+                    <option v-if="is_logged_in && is_onboarded && channel !== user?.login" :value="user?.login">[[
+                        user?.login
                         ]]
                     </option>
-                    <option v-for="c in channels.filter(c => c !== channel && c !== login)" :value="c">[[ c ]]</option>
+                    <option v-for="c in channels.filter(c => c !== channel && c !== user?.login)" :value="c">[[ c ]]
+                    </option>
                 </select>
             </p>
             <p v-else>
                 Loading...
             </p>
             <span v-if="is_logged_in && channels">
-                <span v-if="channel === login || is_super_admin">
+                <span v-if="channel === user?.login || is_super_admin">
                     <p v-if="channel_props.enabled" class="alert green-bg">
-                        The bot is enabled on <span v-if="channel === login">your</span><span v-else>this</span> channel
+                        The bot is enabled on <span v-if="channel === user?.login">your</span><span v-else>this</span>
+                        channel
                         ([[ channel ]]). <button class="red bold rounded" :disabled="enabled_grayed_out"
                             @click="set_enabled(false)">DISABLE</button>
                     </p>
                     <p v-else class="alert red-bg">The bot is NOT enabled on <span
-                            v-if="channel === login">your</span><span v-else>this</span> channel ([[ channel ]]).
+                            v-if="channel === user?.login">your</span><span v-else>this</span> channel ([[ channel ]]).
                         <button class="red bold rounded" :disabled="enabled_grayed_out"
                             @click="set_enabled(true)">ENABLE</button>
                     </p>
 
                     <p>
                         twitch channel connected: <a :href="'https://twitch.tv/' + channel">[[channel]]</a>
-                        <button @click="check_twitch_status">check twitch chat status</button>
+                        <button @click="check_status('twitch')">check twitch chat status</button>
                     </p>
                     <p>
                         <span v-if="channel_props.youtube_id && channel_props.youtube_id.length > 0">
@@ -295,7 +300,7 @@
                             <input type="text" v-model="youtube_input" />
                             <button @click="find_youtube_id">find channel</button>
                         </span>
-                        <button @click="check_youtube_status">check youtube chat status</button>
+                        <button @click="check_status('youtube')">check youtube chat status</button>
                     </p>
                     <p>
                         <span v-if="channel_props.owncast_url && channel_props.owncast_url.length > 0">
@@ -308,7 +313,7 @@
                             <input type="text" v-model="owncast_input" />
                             <button @click="set_owncast_url(owncast_input)">connect</button>
                         </span>
-                        <button @click="check_owncast_status">check owncast chat status</button>
+                        <button @click="check_status('owncast')">check owncast chat status</button>
                     </p>
                     <p>
                         <span v-if="channel_props.kick_chatroom_id && channel_props.kick_chatroom_id.length > 0">kick
@@ -322,10 +327,10 @@
                             kick not connected - enter kick username: <input type="text" v-model="kick_input" />
                             <button @click="kick_connect">connect</button>
                         </span>
-                        <button @click="check_kick_status">check kick chat status</button>
+                        <button @click="check_status('kick')">check kick chat status</button>
                     </p>
                     <p>
-                        <button @click="check_emotes_status">check 3rd party emotes status</button>
+                        <button @click="check_status('emotes')">check 3rd party emotes status</button>
                         <button @click="clear_chat">clear chat</button>
                     </p>
                     <h2>Forward Commands from Youtube to Twitch</h2>
@@ -351,14 +356,15 @@
                 <span v-else>
                     <p class="alert gray-bg">
                         logged in as
-                        <a v-if="is_onboarded" :href="'/' + login">[[ login ]]</a><span v-else>[[ login ]]</span>,
+                        <a v-if="is_onboarded" :href="'/' + user?.login">[[ user?.login ]]</a><span v-else>[[
+                            user?.login ]]</span>,
                         viewing <span class="bold">[[ channel ]]</span>
                     </p>
                 </span>
             </span>
             <span v-if="channel && channels">
                 <h2>Nickname Ledger</h2>
-                <span v-if="channel === login || is_super_admin">
+                <span v-if="channel === user?.login || is_super_admin">
                     max nickname length: <input v-model="channel_props_edit.max_nickname_length" type="number"> <button
                         @click="save_channel_prop('max_nickname_length')"
                         v-if="channel_props_edit.max_nickname_length !== channel_props.max_nickname_length"
@@ -373,14 +379,14 @@
                         class="red-bg rounded">save</button><br />
                 </span>
                 <span v-if="channel_props.enabled">
-                    <p v-if="channel === login || is_super_admin" class="alert gray-bg">
+                    <p v-if="channel === user?.login || is_super_admin" class="alert gray-bg">
                         Use <code>!nick</code> in the chat to show up here!
                     </p>
                     <p v-else class="alert green-bg">
                         Use <code>!nick</code> in [[ channel ]]'s chat to show up here!
                     </p>
                 </span>
-                <p v-else-if="!(channel === login || is_super_admin)" class="alert red-bg">
+                <p v-else-if="!(channel === user?.login || is_super_admin)" class="alert red-bg">
                     The bot is NOT enabled on this channel ([[ channel ]]), ask the streamer to enable it by
                     visiting this page and logging in.
                 </p>
@@ -422,7 +428,8 @@
             <br /><br /><br /><br />
             <span style="font-size: smaller;">
                 This site's <a target="_blank" href="https://codeberg.org/johanvandegriff/multibot">source code</a> is
-                released under the AGPL-3.0 license. Hosted on <a target="_blank" href="https://m.do.co/c/f300a2838d1d">DigitalOcean</a>.
+                released under the AGPL-3.0 license. Hosted on <a target="_blank"
+                    href="https://m.do.co/c/f300a2838d1d">DigitalOcean</a>.
             </span>
         </div>
 
@@ -431,7 +438,7 @@
                 <br />
                 <h2 style="display:inline">Chat</h2>
                 &nbsp;
-                <a class="button" target="_blank" href="/{{channel}}/chat">
+                <a class="button" target="_blank" href="/{{.channel}}/chat">
                     &nbsp; pop-out
                     <svg style="width:20px" xmlns="http://www.w3.org/2000/svg" width="12" height="12">
                         <path fill="#fff" stroke="#36c" d="M1.5 4.518h5.982V10.5H1.5z" />
@@ -506,9 +513,9 @@
     </div>
 
     <script type="module">
-        import { createApp } from '/{{channel}}/vue.js';
-        import ColorHash from '/{{channel}}/color-hash.js';
-        import { getEmoteAsUrl, parseEmotesInMessage } from '/{{channel}}/tmi-utils/index.js';
+        import { createApp } from '/api/static/vue.esm-browser.prod.js';
+        import ColorHash from '/{{.channel}}/static/color-hash.esm.js';
+        import { getEmoteAsUrl, parseEmotesInMessage } from '/{{.channel}}/tmi-utils/index.js';
 
         async function fetch_(method, url, data) {
             const res = await fetch(url, {
@@ -520,7 +527,7 @@
                 body: JSON.stringify(data),
             });
             if (res.status === 403) {
-                alert('access denied, please copy your work and refresh the page');
+                alert('access denied, please copy your work and refresh the page, or log in on a new tab');
             } else if (res.status !== 200) {
                 alert(`unknown error ${res.status} "${await res.text()}" when calling ${url}`);
             }
@@ -538,21 +545,15 @@
             delimiters: ['[[', ']]'],
             data() {
                 return {
-                    page_hash: '{{page_hash}}',
+                    page_hash: '{{.page_hash}}',
                     color_hash: new ColorHash({ lightness: [0.5, 0.6, 0.7, 0.8], saturation: [0.6, 0.7, 0.8, 0.9, 1] }),
                     user_colors: {},
-                    channel: '{{channel}}',
-                    channels: '{{channels}}'.split(','),
-                    accessToken: '{{user.accessToken}}',
-                    refreshToken: '{{user.refreshToken}}',
-                    display_name: '{{user.display_name}}',
-                    login: '{{user.login}}',
-                    is_logged_in: '{{user.login}}' !== '',
-                    profile_image_url: '{{user.profile_image_url}}',
-                    is_super_admin: '{{is_super_admin}}' === 'true',
-                    is_chat_fullscreen: '{{is_chat_fullscreen}}' === 'true',
-                    bgcolor: '{{bgcolor}}',
-                    enabled_cooldown: '{{enabled_cooldown}}',
+                    channel: '{{.channel}}',
+                    channels: '{{.channels}}'.split(','),
+                    user: JSON.parse('{{.user}}'),
+                    is_chat_fullscreen: '{{.is_chat_fullscreen}}' === 'true',
+                    bgcolor: '{{.bgcolor}}',
+                    enabled_cooldown: '{{.enabled_cooldown}}',
                     enabled_grayed_out: false,
                     chat: [],
                     viewers: {},
@@ -636,7 +637,7 @@
                 },
                 websocket_connect() {
                     const ws_origin = window.document.location.origin.replace('http', 'ws');
-                    const ws = new WebSocket(`${ws_origin}/{{channel}}`);
+                    const ws = new WebSocket(`${ws_origin}/{{.channel}}/ws`);
                     ws.binaryType = "blob";
                     // Log socket opening and closing
                     ws.addEventListener("open", event => {
@@ -666,8 +667,20 @@
                             this.viewers[m.username] = {};
                         }
                         this.viewers[m.username][m.prop_name] = m.prop_value;
+                        if (m.prop_name == 'nickname') {
+                            this.chat.map(msg => {
+                                if (msg.username === m.username) {
+                                    msg.nickname = m.prop_value;
+                                }
+                            })
+                        }
                     } else if (data.type === 'delete_viewer') { //might need to generalize this
                         delete this.viewers[m.username];
+                        this.chat.map(msg => {
+                            if (msg.username === m.username) {
+                                msg.nickname = undefined;
+                            }
+                        })
                     } else if (data.type === 'pronouns') {
                         this.chat.map(msg => {
                             if (msg.username === m.username && msg.pronouns === undefined) {
@@ -704,16 +717,16 @@
                     });
                 },
                 async set_viewer_prop(username, prop_name, prop_value) {
-                    return await fetch_post(`/{{channel}}/viewers/${username}/${prop_name}`, { prop_value: prop_value });
+                    return await fetch_post(`/{{.channel}}/viewers/${username}/${prop_name}`, { prop_value: prop_value });
                 },
                 async set_channel_prop(prop_name, prop_value) {
-                    return await fetch_post(`/{{channel}}/channel_props/${prop_name}`, { prop_value: prop_value });
+                    return await fetch_post(`/{{.channel}}/channel_props/${prop_name}`, { prop_value: prop_value });
                 },
                 async save_channel_prop(prop_name) {
                     return await this.set_channel_prop(prop_name, this.channel_props_edit[prop_name]);
                 },
                 get_channel_prop(prop_name) {
-                    fetch(`/{{channel}}/channel_props/${prop_name}`)
+                    fetch(`/{{.channel}}/channel_props/${prop_name}`)
                         .then(res => res.json())
                         .then(json => {
                             console.log(prop_name, json);
@@ -724,7 +737,7 @@
                 async set_enabled(enabled) {
                     this.enabled_grayed_out = true;
                     setTimeout(() => { this.enabled_grayed_out = false; }, this.enabled_cooldown);
-                    const res = await fetch_post('/{{channel}}/channel_props/enabled', { prop_value: enabled });
+                    const res = await fetch_post('/{{.channel}}/channel_props/enabled', { prop_value: enabled });
                     if (await res.text() === 'wait') {
                         alert('please wait 5 seconds and try again');
                     }
@@ -759,7 +772,7 @@ leave blank to revert to default greetz`, this.viewers[username].custom_greetz);
                     if (match) {
                         this.set_channel_prop('youtube_id', match[1]);
                     } else {
-                        fetch('/{{channel}}/find_youtube_id?channel=' + encodeURIComponent(this.youtube_input))
+                        fetch('/{{.channel}}/find_youtube_id?channel=' + encodeURIComponent(this.youtube_input))
                             .then(res => res.text())
                             .then(text => {
                                 if (text === 'invalid') {
@@ -816,61 +829,20 @@ leave blank to revert to default greetz`, this.viewers[username].custom_greetz);
                     this.set_channel_prop('kick_username', undefined);
                     this.set_channel_prop('kick_chatroom_id', undefined);
                 },
-                check_twitch_status() {
-                    fetch('/{{channel}}/status/twitch')
+                check_status(component) {
+                    fetch('/{{.channel}}/status/' + component)
                         .then(res => res.text())
                         .then(text => {
-                            console.log('/status/twitch', text);
-                            alert(`Twitch Status:
+                            console.log('/status/' + component, text);
+                            alert(`${component} status:
 ${text}`);
-                        });
-                },
-                check_youtube_status() {
-                    fetch('/{{channel}}/status/youtube')
-                        .then(res => res.json())
-                        .then(json => {
-                            console.log('/status/youtube', json);
-                            alert(`YouTube Status:
-channelId: ${json.listener?.channelId}
-channelName: ${json.listener?.channelName}
-videoId: ${json.listener?.videoId}
-title: ${json.listener?.title}
-isLive: ${json.listener?.isLive}`);
-                        });
-                },
-                check_owncast_status() {
-                    fetch('/{{channel}}/status/owncast')
-                        .then(res => res.json())
-                        .then(json => {
-                            console.log('/status/owncast', json);
-                            alert(`Owncast Status:
-socket.servername: ${json.listener?.socket?.servername}
-config.webSocketVersion: ${json.listener?.config?.webSocketVersion}`);
-                        });
-                },
-                check_kick_status() {
-                    fetch('/{{channel}}/status/kick')
-                        .then(res => res.text())
-                        .then(text => {
-                            console.log('/status/kick', text);
-                            alert(`Kick Status:
-${text}`);
-                        });
-                },
-                check_emotes_status() {
-                    fetch('/{{channel}}/status/emotes')
-                        .then(res => res.json())
-                        .then(json => {
-                            console.log('/status/emotes', json);
-                            alert(`Emotes Status:
-${JSON.stringify(json, undefined, 2)}`);
                         });
                 },
                 clear_chat() {
-                    fetch_post('/{{channel}}/clear_chat');
+                    fetch_post('/{{.channel}}/clear_chat');
                 },
                 async offboard(channel) {
-                    if (confirm(`Are you sure you want to remove the bot from ${channel === this.login ? 'your' : 'this'} channel (${channel}) and delete all the data?`)) {
+                    if (confirm(`Are you sure you want to remove the bot from ${channel === this.user?.login ? 'your' : 'this'} channel (${channel}) and delete all the data?`)) {
                         fetch('/api/offboard/' + channel)
                             .then(async res => {
                                 const text = await res.text();
@@ -961,10 +933,10 @@ ${JSON.stringify(json, undefined, 2)}`);
             },
             mounted() {
                 this.websocket_connect();
-                fetch('/{{channel}}/viewers')
+                fetch('/{{.channel}}/viewers')
                     .then(res => res.json())
                     .then(json => this.viewers = json);
-                fetch('/{{channel}}/chat_history')
+                fetch('/{{.channel}}/chat_history')
                     .then(res => res.json())
                     .then(json => {
                         json.forEach(msg => this.websocket_chat(msg));
@@ -986,12 +958,18 @@ ${JSON.stringify(json, undefined, 2)}`);
                 },
             },
             computed: {
+                is_logged_in() {
+                    return !!this.user;
+                },
+                is_super_admin() {
+                    return this.user?.is_super_admin === true;
+                },
                 is_onboarded() {
-                    return this.channels.includes(this.login);
+                    return this.channels.includes(this.user?.login);
                 },
                 is_auth() {
-                    return this.is_logged_in && this.channel === this.login || this.is_super_admin;
-                }
+                    return this.is_logged_in && this.channel === this.user?.login || this.is_super_admin;
+                },
             },
         }).mount('#app');
     </script>

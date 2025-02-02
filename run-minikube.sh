@@ -4,7 +4,7 @@ export IMAGE_PULL_POLICY=IfNotPresent
 export KUBECONFIG=
 ns=multibot #namespace
 
-if minikube status | grep Stopped > /dev/null; then
+if ! minikube status | grep 'host: Running' > /dev/null; then
   minikube start
 fi
 alias kubectl='minikube kubectl --'

@@ -4,7 +4,7 @@
 <head>
     <title>JJBotBot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/api/fonts/cabin/400.css">
+    <link rel="stylesheet" href="/api/static/fonts/cabin/400.css">
     <style>
         * {
             margin: 0;
@@ -120,15 +120,15 @@
     <div id="container">
         <div id="login" v-if="!is_chat_fullscreen">
             <span v-if="is_logged_in">
-                <a v-if="login !== channel && is_onboarded" :href="'/' + login"><img :src="profile_image_url" /></a>
-                <img v-else :src="profile_image_url" />
+                <a v-if="user?.login !== channel && is_onboarded" :href="'/' + user?.login"><img :src="user?.profile_image_url" /></a>
+                <img v-else :src="user?.profile_image_url" />
                 <div class="right">
                     &nbsp;
-                    <a v-if="login !== channel && is_onboarded" :href="'/' + login">[[display_name]]</a>
-                    <span v-else>[[display_name]]</span>
+                    <a v-if="user?.login !== channel && is_onboarded" :href="'/' + user?.login">[[user?.display_name]]</a>
+                    <span v-else>[[user?.display_name]]</span>
                     <span v-if="is_super_admin">&nbsp;<span class="super_admin">SUPER ADMIN</span></span>
                     &nbsp;
-                    <a href="/api/logout?returnTo={{channel}}">log out</a>
+                    <a href="/api/logout?returnTo={{.channel}}">log out</a>
                     &nbsp;
                 </div>
             </span>
@@ -147,10 +147,10 @@
                 Channel:
                 <select v-model="channel">
                     <option selected :value="channel">select a channel</option>
-                    <option v-if="is_logged_in && is_onboarded && '' !== login" :value="login">[[ login
+                    <option v-if="is_logged_in && is_onboarded && channel !== user?.login" :value="user?.login">[[ user?.login
                         ]]
                     </option>
-                    <option v-for="c in channels.filter(c => c !== '' && c !== login)" :value="c">[[ c ]]</option>
+                    <option v-for="c in channels.filter(c => c !== '' && c !== user?.login)" :value="c">[[ c ]]</option>
                 </select>
             </p>
             <span v-if="is_logged_in">
@@ -158,13 +158,13 @@
                     <p>You are logged in and signed up to use the bot!</p>
                     <p>
                         Go to your channel page here:
-                        <a :href="'/' + login">[[display_name]]</a>
+                        <a :href="'/' + user?.login">[[user?.display_name]]</a>
                     </p>
                 </span>
                 <span v-else>
                     <p>
                         You are logged in, but not signed up to use the bot.
-                        <button @click="onboard(login)">sign up</button>
+                        <button @click="onboard(user?.login)">sign up</button>
                     </p>
                 </span>
                 <p class="status_message" v-if="onboard_progress">[[onboard_progress]]<a v-if="onboard_link"
@@ -179,7 +179,7 @@
                 <br /><br /><br /><br />
                 <br /><br /><br /><br />
                 <label><input type="checkbox" v-model="confirm_delete"> confirm</label> <button class="red bold rounded"
-                    @click="offboard(login)" :disabled="!confirm_delete">DELETE ACCOUNT</button>
+                    @click="offboard(user?.login)" :disabled="!confirm_delete">DELETE ACCOUNT</button>
             </span>
             <br /><br /><br /><br />
             <span style="font-size: smaller;">
@@ -190,21 +190,15 @@
     </div>
 
     <script type="module">
-        import { createApp } from '/vue.js';
+        import { createApp } from '/api/static/vue.esm-browser.prod.js';
 
         createApp({
             delimiters: ['[[', ']]'],
             data() {
                 return {
                     channel: '',
-                    channels: '{{channels}}'.split(','),
-                    accessToken: '{{user.accessToken}}',
-                    refreshToken: '{{user.refreshToken}}',
-                    display_name: '{{user.display_name}}',
-                    profile_image_url: '{{user.profile_image_url}}',
-                    login: '{{user.login}}',
-                    is_logged_in: '{{user.login}}' !== '',
-                    is_super_admin: '{{is_super_admin}}' === 'true',
+                    channels: '{{.channels}}'.split(','),
+                    user: JSON.parse('{{.user}}'),
                     onboard_progress: undefined,
                     super_admin_channel_to_onboard: '',
                     confirm_delete: false,
@@ -283,7 +277,7 @@
                         });
                 },
                 async offboard(channel) {
-                    if (confirm(`Are you sure you want to remove the bot from ${channel === this.login ? 'your' : 'this'} channel (${channel}) and delete all the data?`)) {
+                    if (confirm(`Are you sure you want to remove the bot from ${channel === this.user?.login ? 'your' : 'this'} channel (${channel}) and delete all the data?`)) {
                         fetch('/api/offboard/' + channel)
                             .then(async res => {
                                 const text = await res.text();
@@ -309,9 +303,15 @@
                 },
             },
             computed: {
+                is_logged_in() {
+                    return !!this.user;
+                },
+                is_super_admin() {
+                    return this.user?.is_super_admin === true;
+                },
                 is_onboarded() {
-                    return this.channels.includes(this.login);
-                }
+                    return this.channels.includes(this.user?.login);
+                },
             },
         }).mount('#app')
     </script>

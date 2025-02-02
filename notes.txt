@@ -102,6 +102,54 @@ NEW FEATURES TO ADD:
 +font selector: twitch font (current), discord font ('gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; check license (it was not allowed so found a similar one)), arial, etc.
 +add text-shadow to chat: darken the background behind the text while keeping the text at full opacity
 
+MIGRATE FROM NODEJS TO GOLANG:
++measure the memory, cpu, etc. usage before deploying golang (this is the reason for migrating)
+    NAME                             CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+    jjbotbot-k8s-node-pool-1-gsdpb   62m          6%     1063Mi          67%       
+    jjbotbot-k8s-node-pool-1-gsdpj   35m          3%     1089Mi          69%       
+    jjbotbot-k8s-node-pool-1-gsdpr   40m          4%     1069Mi          67%       
+    jjbotbot-k8s-node-pool-2-gchh8   69m          3%     1859Mi          59%   
++rewrite main container
++get twitch login and redis session working
++fix proxy
++tweak frontend to work with golang templates
++Dockerfile for golang build
++reduce size of docker image (nodejs ~200MB -> golang ~2GB :[ -> golang from scratch ~50MB, yay!)
+    nodejs: johanvandegriff/multibot-tenant      5ff3d19   36acdc2687e8   2 months ago        264MB
+    nodejs: johanvandegriff/multibot-main        5ff3d19   fb910ab9425b   2 months ago        179MB
+    golang: johanvandegriff/multibot-tenant      latest    0e5baa5ca2ac   About an hour ago   16.2MB
+    golang: johanvandegriff/multibot-main        latest    6eb3cfa2d3b1   About an hour ago   57.7MB
++Dockerfile SSL cert fix
++scripts for running directly, docker-compose, minikube (no change there)
++get k8s connection working
++rewrite tenant container
++twitch, youtube, owncast, kick chat connections
++fork and fix golang kick chat library
++find_youtube_id
++channelAuthMiddleware
++property listeners to connect to chats when youtube/owncast/kick ID changes
++skip youtube chats older than 60sec
++twitch !commands and posting to twitch chat
++nicknames
++emotes 7TV, BTTV, FFZ, YT
++pronouns
++profanity filter
++command forwarding
++clear chat command
++status for each chat connection
++youtube emotes from yt.json
++review server.js to look for missing features and inconsistencies
++test extensively on minikube
++fix disable not disconnecting from chats
++say "connected/disconnected youtube chat" in twitch chat
++say "connected/disconnected owncast chat" in twitch chat
++fix popout fullscreen chat bgcolor logic
++commit code
+deploy to k8s
+measure the resource usage after migrating
+
+NEW FEATURES TO ADD:
++on frontend, update nickname in chat when it changes
 link to twitch, yt, etc. on a channel page even when not logged in
 RTMP livestream splitting with 2nd tenant container
 OBS container hosting with 3rd tenant container
