@@ -1,12 +1,17 @@
-module multibot/main-container
+module multibot
 
 go 1.23.0
 
 toolchain go1.23.5
 
 require (
+	github.com/TwiN/go-away v1.6.14
+	github.com/abhinavxd/youtube-live-chat-downloader/v2 v2.0.3
+	github.com/gempir/go-twitch-irc/v4 v4.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
+	github.com/gorilla/websocket v1.5.3
+	github.com/johanvandegriff/kick-chat-wrapper v0.0.1
 	github.com/redis/go-redis/v9 v9.7.0
 	golang.org/x/oauth2 v0.25.0
 	k8s.io/api v0.32.1
@@ -37,10 +42,10 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/net v0.30.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/term v0.25.0 // indirect
+	golang.org/x/text v0.20.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect

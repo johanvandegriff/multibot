@@ -12,16 +12,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-
 )
 
 const (
 	REDIS_NAMESPACE = "multibot"
 	PREDIS          = REDIS_NAMESPACE + ":"
-
-	SESSION_COOKIE = "session_id"         // Name of the cookie that stores the session ID.
-	SESSION_PREFIX = PREDIS + "sessions/" // Prefix for session keys in Redis.
-	SESSION_TTL    = 30 * time.Minute     // How long a session lives in Redis.
+	SESSION_PREFIX  = PREDIS + "sessions/" // Prefix for session keys in Redis.
+	SESSION_COOKIE  = "session_id"         // Name of the cookie that stores the session ID.
+	SESSION_TTL     = 30 * time.Minute     // How long a session lives in Redis.
 )
 
 var (
@@ -129,4 +127,17 @@ func GetSession(r *http.Request) *Session {
 		return nil
 	}
 	return session
+}
+
+func Init() {
+	opt, err := redis.ParseURL(STATE_DB_URL)
+	if err != nil {
+		log.Fatalf("failed to parse redis URL: %v", err)
+	}
+	opt.Password = STATE_DB_PASSWORD
+	Rdb = redis.NewClient(opt)
+	if err := Rdb.Ping(context.Background()).Err(); err != nil {
+		log.Fatalf("redis ping error: %v", err)
+	}
+	log.Println("Connected to Redis!")
 }

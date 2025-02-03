@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/gob"
@@ -20,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
@@ -33,21 +31,12 @@ import (
 
 	"multibot/tenant-container/src/emotes"
 	"multibot/tenant-container/src/twitchApi"
-)
 
-const (
-	REDIS_NAMESPACE = "multibot"
-	PREDIS          = REDIS_NAMESPACE + ":"
-	SESSION_COOKIE  = "session_id"         // Name of the cookie that stores the session ID.
-	SESSION_PREFIX  = PREDIS + "sessions/" // Prefix for session keys in Redis.
-	SESSION_TTL     = 30 * time.Minute     // How long a session lives in Redis.
+	"multibot/common/redisSession"
 )
 
 var (
 	TWITCH_CHANNEL              = os.Getenv("TWITCH_CHANNEL")
-	STATE_DB_URL                = os.Getenv("STATE_DB_URL")
-	STATE_DB_PASSWORD           = os.Getenv("STATE_DB_PASSWORD")
-	SESSION_SECRET              = os.Getenv("SESSION_SECRET")
 	TWITCH_SUPER_ADMIN_USERNAME = os.Getenv("TWITCH_SUPER_ADMIN_USERNAME")
 	TWITCH_BOT_USERNAME         = os.Getenv("TWITCH_BOT_USERNAME")
 	TWITCH_BOT_OAUTH_TOKEN      = os.Getenv("TWITCH_BOT_OAUTH_TOKEN")
@@ -150,7 +139,6 @@ var (
 	viewerPropListeners  = make(map[string][]func(username string, oldValue, newValue interface{}))
 
 	// Redis, sessions, template, etc.
-	rdb              *redis.Client
 	indexTemplate    *template.Template
 	indexPageHash    string
 	enabledRateLimit time.Time // rate-limit toggling "enabled"
@@ -203,97 +191,6 @@ var (
 	}
 )
 
-// Session holds session data.
-type Session struct {
-	ID   string                 `json:"id"`
-	Data map[string]interface{} `json:"data"`
-}
-
-func saveSession(ctx context.Context, session *Session) error {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(session); err != nil {
-		return err
-	}
-	key := SESSION_PREFIX + session.ID
-	return rdb.Set(ctx, key, buf.Bytes(), SESSION_TTL).Err()
-}
-
-func loadSession(ctx context.Context, sessionID string) (*Session, error) {
-	key := SESSION_PREFIX + sessionID
-	data, err := rdb.Get(ctx, key).Bytes() // Use .Bytes() when storing raw bytes
-	if err == redis.Nil {
-		return &Session{
-			ID:   sessionID,
-			Data: make(map[string]interface{}),
-		}, nil
-	} else if err != nil {
-		return nil, err
-	}
-	var session Session
-	dec := gob.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(&session); err != nil {
-		return nil, err
-	}
-	return &session, nil
-}
-
-// sessionMiddleware is an HTTP middleware that manages sessions.
-func sessionMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		var sess *Session
-
-		// Try to get the session cookie.
-		cookie, err := r.Cookie(SESSION_COOKIE)
-		if err != nil || cookie.Value == "" {
-			// No valid session cookie found. Create a new session.
-			newSessionID := uuid.New().String()
-			sess = &Session{
-				ID:   newSessionID,
-				Data: make(map[string]interface{}),
-			}
-			// Set the session cookie.
-			http.SetCookie(w, &http.Cookie{
-				Name:     SESSION_COOKIE,
-				Value:    newSessionID,
-				Path:     "/",
-				HttpOnly: true,
-				// Optionally set Secure, SameSite, etc.
-			})
-		} else {
-			// Load the session from Redis.
-			sess, err = loadSession(ctx, cookie.Value)
-			if err != nil {
-				// On error, log it and create a new session.
-				log.Printf("Failed to load session: %v. Creating a new session.", err)
-				newSessionID := uuid.New().String()
-				sess = &Session{
-					ID:   newSessionID,
-					Data: make(map[string]interface{}),
-				}
-				http.SetCookie(w, &http.Cookie{
-					Name:     SESSION_COOKIE,
-					Value:    newSessionID,
-					Path:     "/",
-					HttpOnly: true,
-				})
-			}
-		}
-
-		// Store the session in the context.
-		ctx = context.WithValue(ctx, "session", sess)
-
-		// Let the next handler handle the request.
-		next.ServeHTTP(w, r.WithContext(ctx))
-
-		// Save the session back to Redis.
-		if err := saveSession(ctx, sess); err != nil {
-			log.Printf("Failed to save session: %v", err)
-		}
-	})
-}
-
 // pronounEntry holds details about a user’s pronoun lookup.
 type pronounEntry struct {
 	Pronouns        string    // e.g. "He/Him"
@@ -328,20 +225,7 @@ type ChatMessage struct {
 func main() {
 	gob.Register(&twitchUser{})
 
-	// Connect to Redis.
-	if STATE_DB_URL == "" {
-		log.Fatal("STATE_DB_URL not set")
-	}
-	opt, err := redis.ParseURL(STATE_DB_URL)
-	if err != nil {
-		log.Fatalf("failed to parse redis URL: %v", err)
-	}
-	opt.Password = STATE_DB_PASSWORD
-	rdb = redis.NewClient(opt)
-	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Fatalf("redis ping error: %v", err)
-	}
-	log.Println("Connected to Redis!")
+	redisSession.Init()
 
 	// Run first-run checks.
 	go ensureFirstRun()
@@ -420,7 +304,7 @@ func main() {
 	router := mux.NewRouter()
 
 	// Register the session middleware so that all routes have session handling.
-	router.Use(sessionMiddleware)
+	router.Use(redisSession.SessionMiddleware)
 
 	router.HandleFunc("/ws", wsHandler)
 	router.HandleFunc("/ws/num_clients", wsNumClientsHandler)
@@ -833,8 +717,8 @@ func sha256sum(data []byte) string {
 
 // small helper to retrieve the current user from the session
 func getSessionUser(r *http.Request) *twitchUser {
-	session, ok := r.Context().Value("session").(*Session)
-	if !ok {
+	session := redisSession.GetSession(r)
+	if session == nil {
 		return nil
 	}
 	user, ok := session.Data["twitch_user"].(*twitchUser)
@@ -875,14 +759,14 @@ func ensureFirstRun() {
 	didFirstRun := getChannelPropBool(ctx, "did_first_run")
 	if !didFirstRun {
 		log.Println("FIRST RUN logic: clearing viewer data, channel props, etc.")
-		viewerSetKey := PREDIS + "channels/" + TWITCH_CHANNEL + "/viewers"
-		viewers, _ := rdb.SMembers(ctx, viewerSetKey).Result()
+		viewerSetKey := redisSession.PREDIS + "channels/" + TWITCH_CHANNEL + "/viewers"
+		viewers, _ := redisSession.Rdb.SMembers(ctx, viewerSetKey).Result()
 		for _, v := range viewers {
-			rdb.Del(ctx, viewerKey(v))
+			redisSession.Rdb.Del(ctx, viewerKey(v))
 		}
-		rdb.Del(ctx, viewerSetKey)
+		redisSession.Rdb.Del(ctx, viewerSetKey)
 		for propName := range DEFAULT_CHANNEL_PROPS {
-			rdb.Del(ctx, channelPropKey(propName))
+			redisSession.Rdb.Del(ctx, channelPropKey(propName))
 		}
 		setViewerProp(ctx, TWITCH_BOT_USERNAME, "nickname", DEFAULT_BOT_NICKNAME)
 		setChannelProp(ctx, "did_first_run", true)
@@ -890,11 +774,11 @@ func ensureFirstRun() {
 }
 
 func channelPropKey(propName string) string {
-	return PREDIS + "channels/" + TWITCH_CHANNEL + "/channel_props/" + propName
+	return redisSession.PREDIS + "channels/" + TWITCH_CHANNEL + "/channel_props/" + propName
 }
 
 func viewerKey(username string) string {
-	return PREDIS + "channels/" + TWITCH_CHANNEL + "/viewers/" + username
+	return redisSession.PREDIS + "channels/" + TWITCH_CHANNEL + "/viewers/" + username
 }
 
 func addChannelPropListener(propName string, fn func(oldValue, newValue interface{})) {
@@ -906,12 +790,12 @@ func addViewerPropListener(propName string, fn func(username string, oldVal, new
 }
 
 func listChannels(ctx context.Context) []string {
-	channels, _ := rdb.SMembers(ctx, PREDIS+"channels").Result()
+	channels, _ := redisSession.Rdb.SMembers(ctx, redisSession.PREDIS+"channels").Result()
 	return channels
 }
 
 func listViewers(ctx context.Context) []string {
-	viewers, _ := rdb.SMembers(ctx, PREDIS+"channels/"+TWITCH_CHANNEL+"/viewers").Result()
+	viewers, _ := redisSession.Rdb.SMembers(ctx, redisSession.PREDIS+"channels/"+TWITCH_CHANNEL+"/viewers").Result()
 	return viewers
 }
 
@@ -942,7 +826,7 @@ func getChannelPropInt(ctx context.Context, propName string) int {
 }
 
 func getChannelProp(ctx context.Context, propName string) any {
-	val, err := rdb.Get(ctx, channelPropKey(propName)).Result()
+	val, err := redisSession.Rdb.Get(ctx, channelPropKey(propName)).Result()
 	if err == redis.Nil || err != nil {
 		if defVal, ok := DEFAULT_CHANNEL_PROPS[propName]; ok {
 			return defVal
@@ -969,10 +853,10 @@ func setChannelProp(ctx context.Context, propName string, propValue interface{})
 	}
 
 	if propValue == nil {
-		rdb.Del(ctx, channelPropKey(propName))
+		redisSession.Rdb.Del(ctx, channelPropKey(propName))
 	} else {
 		raw, _ := json.Marshal(propValue)
-		rdb.Set(ctx, channelPropKey(propName), raw, 0)
+		redisSession.Rdb.Set(ctx, channelPropKey(propName), raw, 0)
 	}
 	broadcast("channel_prop", map[string]any{
 		"prop_name":  propName,
@@ -988,7 +872,7 @@ func setChannelProp(ctx context.Context, propName string, propValue interface{})
 }
 
 func getViewerProp(ctx context.Context, username, propName string) any {
-	val, err := rdb.HGet(ctx, viewerKey(username), propName).Result()
+	val, err := redisSession.Rdb.HGet(ctx, viewerKey(username), propName).Result()
 	if err == redis.Nil {
 		if defVal, ok := DEFAULT_VIEWER_PROPS[propName]; ok {
 			return defVal
@@ -1003,7 +887,7 @@ func getViewerProp(ctx context.Context, username, propName string) any {
 }
 
 func getAllViewerProps(ctx context.Context, username string) (map[string]any, error) {
-	hash, err := rdb.HGetAll(ctx, viewerKey(username)).Result()
+	hash, err := redisSession.Rdb.HGetAll(ctx, viewerKey(username)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -1023,11 +907,11 @@ func setViewerProp(ctx context.Context, username, propName string, propValue int
 		oldVal = getViewerProp(ctx, username, propName)
 	}
 	if propValue == nil {
-		rdb.HDel(ctx, viewerKey(username), propName)
+		redisSession.Rdb.HDel(ctx, viewerKey(username), propName)
 	} else {
-		rdb.SAdd(ctx, PREDIS+"channels/"+TWITCH_CHANNEL+"/viewers", username)
+		redisSession.Rdb.SAdd(ctx, redisSession.PREDIS+"channels/"+TWITCH_CHANNEL+"/viewers", username)
 		raw, _ := json.Marshal(propValue)
-		rdb.HSet(ctx, viewerKey(username), propName, string(raw))
+		redisSession.Rdb.HSet(ctx, viewerKey(username), propName, string(raw))
 	}
 	broadcast("viewer_prop", map[string]any{
 		"username":   username,
@@ -1051,8 +935,8 @@ func deleteViewer(ctx context.Context, username string) {
 			}
 		}
 	}
-	rdb.SRem(ctx, PREDIS+"channels/"+TWITCH_CHANNEL+"/viewers", username)
-	rdb.Del(ctx, viewerKey(username))
+	redisSession.Rdb.SRem(ctx, redisSession.PREDIS+"channels/"+TWITCH_CHANNEL+"/viewers", username)
+	redisSession.Rdb.Del(ctx, viewerKey(username))
 	broadcast("delete_viewer", map[string]any{"username": username})
 }
 

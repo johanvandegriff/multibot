@@ -17,8 +17,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/gorilla/mux"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -31,7 +29,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/twitch"
 
-	"multibot/main-container/src/redisSession"
+	"multibot/common/redisSession"
 )
 
 var (
@@ -41,9 +39,6 @@ var (
 
 	DISABLE_K8S                 = os.Getenv("DISABLE_K8S") == "true"
 	TWITCH_SUPER_ADMIN_USERNAME = os.Getenv("TWITCH_SUPER_ADMIN_USERNAME")
-	STATE_DB_URL                = os.Getenv("STATE_DB_URL")
-	STATE_DB_PASSWORD           = os.Getenv("STATE_DB_PASSWORD")
-	SESSION_SECRET              = os.Getenv("SESSION_SECRET")
 	BASE_URL                    = os.Getenv("BASE_URL")
 	TWITCH_CLIENT_ID            = os.Getenv("TWITCH_CLIENT_ID")
 	TWITCH_SECRET               = os.Getenv("TWITCH_SECRET")
@@ -488,21 +483,7 @@ func main() {
 		port = "80"
 	}
 
-	// --------------------------------------------------------------------------
-	// 2) Set up Redis
-	// --------------------------------------------------------------------------
-	opt, err := redis.ParseURL(STATE_DB_URL)
-	if err != nil {
-		log.Fatalf("failed to parse redis URL: %v", err)
-	}
-	opt.Password = STATE_DB_PASSWORD
-	redisSession.Rdb = redis.NewClient(opt)
-
-	ctx := context.Background()
-	if err := redisSession.Rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("redis ping error: %v", err)
-	}
-	log.Println("Connected to Redis!")
+	redisSession.Init()
 
 	// --------------------------------------------------------------------------
 	// 4) Connect to Kubernetes (in-cluster)
@@ -521,7 +502,7 @@ func main() {
 	// --------------------------------------------------------------------------
 	// 5) Pre-create any tenant containers for existing channels in Redis
 	// --------------------------------------------------------------------------
-	channels, _ := redisSession.Rdb.SMembers(ctx, redisSession.PREDIS+"channels").Result()
+	channels, _ := redisSession.Rdb.SMembers(context.Background(), redisSession.PREDIS+"channels").Result()
 	log.Printf("channels onboarded: %v\n", channels)
 	if !DISABLE_K8S {
 		for _, c := range channels {

@@ -1,5 +1,8 @@
 #!/bin/bash
+set -e # exit when any error happens
 source .env.prod
+set -x # show commands running
+
 if [[ -z "$KUBECONFIG" ]]; then
   echo '$KUBECONFIG not specified in .env.prod, please add it'
   exit 1
@@ -8,7 +11,7 @@ export IMAGE_PULL_POLICY=Always
 export KUBECONFIG
 ns=multibot #namespace
 
-kubectl create namespace $ns
+kubectl create namespace $ns || :
 kubectl -n $ns get nodes
 
 #build and push docker images
@@ -24,8 +27,8 @@ else
   exit 1
 fi
 
-docker build -t "$DOCKER_USERNAME/multibot-main:$docker_tag" -t "$DOCKER_USERNAME/multibot-main:latest" main-container
-docker build -t "$DOCKER_USERNAME/multibot-tenant:$docker_tag" -t "$DOCKER_USERNAME/multibot-tenant:latest" tenant-container
+docker build -t "$DOCKER_USERNAME/multibot-main:$docker_tag" -t "$DOCKER_USERNAME/multibot-main:latest" -f main-container/Dockerfile .
+docker build -t "$DOCKER_USERNAME/multibot-tenant:$docker_tag" -t "$DOCKER_USERNAME/multibot-tenant:latest" -f tenant-container/Dockerfile .
 
 docker push "$DOCKER_USERNAME/multibot-main:latest"
 docker push "$DOCKER_USERNAME/multibot-tenant:latest"
@@ -50,7 +53,7 @@ rm app-secrets.yaml
 # https://cert-manager.io/docs/tutorials/acme/nginx-ingress/
 # https://dev.to/chrisme/setting-up-nginx-ingress-w-automatically-generated-letsencrypt-certificates-on-kubernetes-4f1k
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/cloud/deploy.yaml
-kubectl create namespace cert-manager
+kubectl create namespace cert-manager || :
 kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.16.1/cert-manager.yaml
 
 # patch it to add resource limits:
@@ -93,7 +96,7 @@ kubectl patch validatingwebhookconfiguration cert-manager-webhook \
     }
   ]'
 
-cat prod-issuer.yaml | sed "s/{{EMAIL}}/$EMAIL_ADDRESS/g" | kubectl create -f -
+cat prod-issuer.yaml | sed "s/{{EMAIL}}/$EMAIL_ADDRESS/g" | kubectl create -f - || :
 
 # kubectl -n $ns delete deployment main-container
 # kubectl -n $ns delete service main-container-svc

@@ -1,5 +1,8 @@
 #!/bin/bash
+set -e # exit when any error happens
 source .env.local
+set -x # show commands running
+
 export IMAGE_PULL_POLICY=IfNotPresent
 export KUBECONFIG=
 ns=multibot #namespace
@@ -8,13 +11,13 @@ if ! minikube status | grep 'host: Running' > /dev/null; then
   minikube start
 fi
 alias kubectl='minikube kubectl --'
-kubectl create namespace $ns
+kubectl create namespace $ns || :
 kubectl -n $ns get nodes
 
 eval $(minikube docker-env)
 docker image rm --force "$DOCKER_USERNAME/multibot-main:latest" "$DOCKER_USERNAME/multibot-tenant:latest"
-docker build -t "$DOCKER_USERNAME/multibot-main:latest" main-container
-docker build -t "$DOCKER_USERNAME/multibot-tenant:latest" tenant-container
+docker build -t "$DOCKER_USERNAME/multibot-main:latest" -f main-container/Dockerfile .
+docker build -t "$DOCKER_USERNAME/multibot-tenant:latest" -f tenant-container/Dockerfile .
 
 # kubectl -n $ns delete deployment state-db
 # kubectl -n $ns delete service state-db
@@ -79,4 +82,3 @@ else
   kubectl -n $ns port-forward service/main-container-svc 8000:8000 > /dev/null &
 fi
 kubectl -n $ns logs --max-log-requests 20 --all-containers --ignore-errors --tail=-1 -f --prefix -l logging=my_group
-# read a
