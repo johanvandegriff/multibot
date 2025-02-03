@@ -34,12 +34,14 @@ This code is open source (AGPL-3.0 license), so you don't have to use my server 
 
 Version 2 is rewritten with a different architecture to allow separating each streamer into their own tenant instance for better scalability. This also makes it easier to add new high power features in the future such as livestream splitting, by creating an extra container for an individual tenant that just does the RTMP multicasting.
 
+Version 3 is rewritten from nodejs to golang, to be more efficient, especially using way less memory. It also has components broken out into packages, with some packages even being used in both containers. When the docker images are built, these common packages are included in both. Also, the docker images used to be ~200MB, now they are ~50MB thanks to the ability for docker to build in one container and copy artifacts to a completely empty container (`FROM scratch`). In fact, the golang binary is statically linked so it doesn't need anything else, so it accounts for all 50MB.
+
 ## Running Locally in Docker
 You will need:
 * **a twitch account for the bot**: The bot works by logging into a normal twitch account, which just happens to have the username `JJBotBot` for my setup, and reading and posting messages in the chat. So I recommend creating a new account for the bot, but you can use your own twitch account if you want it to post messages as your username.
 * **a linux environment**: (might work on windows/mac but havent tested, if you do get it working let me know)
 * **git**: `sudo apt install git` or download from https://git-scm.com/
-* **nodejs**: `sudo apt install nodejs` or download from https://nodejs.org/
+* **golang**: `sudo apt install golang-go` or download from https://go.dev/
 * **docker**: `sudo apt install docker-ce` or download from https://www.docker.com/get-started/
 
 ### Generate Twitch Credentials
@@ -96,9 +98,9 @@ Then do `./run-compose.sh` to build and run the various containers in docker.
 
 Navigate to `http://localhost:8000` in your browser to see the app. The main page is hosted by `main-container`, which also has a router that proxys the streamer pages to the individual instances of `tenant-container`. They share data such as login sessions through a redis `state-db` container. When deploying, it is important to note that the main container can have replicas, but each tenant container can only have 1 instance because of the nature of the live chat connections.
 
-After you have run it once with `./run-compose.sh`, you can use `./run-node.sh` to run it with nodejs directly (redis still runs in docker, but that never needs to be rebuilt) which is faster for testing small changes.
+After you have run it once with `./run-compose.sh`, you can use `./run-go.sh` to run it with golang directly (redis still runs in docker, but that never needs to be rebuilt) which is faster for testing small changes.
 
-Running the app with docker or node directly has some limitations - it is hardcoded to run only on certain twitch channels, and the sign up function will not work since it has no way of creating more instances while running this way. If you want to use different channels, replace `jjvanvan` and `minecraft1167890` in `run-node.sh` and/or `compose.yaml`, or follow the next section to run it locally in kubernetes.
+Running the app with docker or go directly has some limitations - it is hardcoded to run only on certain twitch channels, and the sign up function will not work since it has no way of creating more instances while running this way. If you want to use different channels, replace `jjvanvan` and `minecraft1167890` in `run-go.sh` and/or `compose.yaml`, or follow the next section to run it locally in kubernetes.
 
 Note: I do publish builds of the docker containers, but the project is structured in a way that it is easier to just build them yourself since you already cloned the repo and the scripts are all set up that way.
 
