@@ -1,4 +1,4 @@
-package main
+package twitchApi
 
 import (
 	"encoding/json"
@@ -60,7 +60,7 @@ type helixUsersResponse struct {
 	Message      string `json:"message,omitempty"`
 }
 
-func getTwitchChannelID(channelName string, clientID string, clientSecret string) (int, error) {
+func GetTwitchChannelID(channelName string, clientID string, clientSecret string) (int, error) {
 	token, _, err := getTwitchAppAccessToken(clientID, clientSecret)
 	if err != nil {
 		fmt.Println("Error fetching token:", err)

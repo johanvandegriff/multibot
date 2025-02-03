@@ -1,4 +1,4 @@
-module tenant-container
+module multibot/tenant-container
 
 go 1.23
 

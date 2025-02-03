@@ -30,6 +30,9 @@ import (
 	YtChat "github.com/abhinavxd/youtube-live-chat-downloader/v2"
 	twitch "github.com/gempir/go-twitch-irc/v4"
 	kickchatwrapper "github.com/johanvandegriff/kick-chat-wrapper"
+
+	"multibot/tenant-container/src/emotes"
+	"multibot/tenant-container/src/twitchApi"
 )
 
 const (
@@ -179,13 +182,6 @@ var (
 	pronounCache = make(map[string]*pronounEntry)
 	pronounLock  sync.Mutex
 
-	emoteCache = &emoteCacheData{
-		Emotes:          make(map[string]string),
-		LastUpdated:     time.Time{},
-		StartedUpdating: time.Time{},
-	}
-	emoteLock sync.Mutex
-
 	// Some default known pronoun mappings from pronouns.alejo.io
 	possiblePronouns = map[string]string{
 		"aeaer":    "Ae/Aer",
@@ -303,13 +299,6 @@ type pronounEntry struct {
 	Pronouns        string    // e.g. "He/Him"
 	LastUpdated     time.Time // when we last finalized the pronoun
 	StartedUpdating time.Time // when we started an update attempt
-}
-
-type emoteCacheData struct {
-	Emotes          map[string]string // code => URL
-	Connections     map[string]bool   // e.g., "global_bttv" => true
-	LastUpdated     time.Time
-	StartedUpdating time.Time
 }
 
 type twitchUser struct {
@@ -636,13 +625,13 @@ func statusKickHandler(w http.ResponseWriter, r *http.Request) {
 // /status/emotes
 func statusEmotesHandler(w http.ResponseWriter, r *http.Request) {
 	// For example, how many emotes do we have, lastUpdated, etc.
-	emoteLock.Lock()
-	defer emoteLock.Unlock()
+	emotes.EmoteLock.Lock()
+	defer emotes.EmoteLock.Unlock()
 
 	data := map[string]interface{}{
-		"NumEmotes":       len(emoteCache.Emotes),
-		"LastUpdated":     emoteCache.LastUpdated,
-		"StartedUpdating": emoteCache.StartedUpdating,
+		"NumEmotes":       len(emotes.EmoteCache.Emotes),
+		"LastUpdated":     emotes.EmoteCache.LastUpdated,
+		"StartedUpdating": emotes.EmoteCache.StartedUpdating,
 	}
 	respondJSON(w, data)
 }
@@ -1078,17 +1067,17 @@ func clearChat() {
 }
 
 // sendChat merges the final step: attach 3rd-party emotes, attach pronouns, broadcast out.
-func sendChat(source, username, nickname, color, text string, emotes map[string][]string) {
+func sendChat(source, username, nickname, color, text string, emotesMap map[string][]string) {
 	// find or attach pronouns
 	pronouns := getUserPronouns(username)
-	if emotes == nil {
-		emotes = make(map[string][]string)
+	if emotesMap == nil {
+		emotesMap = make(map[string][]string)
 	}
 	// also merge any found 3rd-party emotes in the text
 	go updateEmoteCacheIfNeeded()
-	thirdParty := find3rdPartyEmotes(text)
+	thirdParty := emotes.Find3rdPartyEmotes(text)
 	for url, positions := range thirdParty {
-		emotes[url] = positions
+		emotesMap[url] = positions
 	}
 
 	msg := ChatMessage{
@@ -1097,14 +1086,14 @@ func sendChat(source, username, nickname, color, text string, emotes map[string]
 		Nickname: nickname,
 		Pronouns: pronouns,
 		Color:    color,
-		Emotes:   emotes,
+		Emotes:   emotesMap,
 		Text:     text,
 	}
 	chatHistory = append(chatHistory, msg)
 	if len(chatHistory) > CHAT_HISTORY_LENGTH {
 		chatHistory = chatHistory[1:]
 	}
-	log.Printf("[websocket] [%s] SEND CHAT %s (nickname: %s pronouns: %s color: %s emotes: %v): %s", source, username, nickname, pronouns, color, emotes, text)
+	log.Printf("[websocket] [%s] SEND CHAT %s (nickname: %s pronouns: %s color: %s emotes: %v): %s", source, username, nickname, pronouns, color, emotesMap, text)
 	broadcast("chat", msg)
 }
 
@@ -1311,25 +1300,25 @@ func emoteCacheRefresher() {
 }
 
 func updateEmoteCacheIfNeeded() {
-	emoteLock.Lock()
-	defer emoteLock.Unlock()
+	emotes.EmoteLock.Lock()
+	defer emotes.EmoteLock.Unlock()
 
 	now := time.Now()
-	log.Println(now, "|", emoteCache.LastUpdated, "|", EMOTE_CACHE_TIME, "|", emoteCache.StartedUpdating, "|", EMOTE_RETRY_TIME)
-	if !emoteCache.LastUpdated.IsZero() && now.Before(emoteCache.LastUpdated.Add(EMOTE_CACHE_TIME)) {
+	log.Println(now, "|", emotes.EmoteCache.LastUpdated, "|", EMOTE_CACHE_TIME, "|", emotes.EmoteCache.StartedUpdating, "|", EMOTE_RETRY_TIME)
+	if !emotes.EmoteCache.LastUpdated.IsZero() && now.Before(emotes.EmoteCache.LastUpdated.Add(EMOTE_CACHE_TIME)) {
 		log.Println("[emotes] 3rd-party emote cache already updated")
 		return
 	}
 
-	if !emoteCache.StartedUpdating.IsZero() && now.Before(emoteCache.StartedUpdating.Add(EMOTE_RETRY_TIME)) {
+	if !emotes.EmoteCache.StartedUpdating.IsZero() && now.Before(emotes.EmoteCache.StartedUpdating.Add(EMOTE_RETRY_TIME)) {
 		log.Println("[emotes] emote cache update in progress, skipping")
 		return
 	}
 
 	log.Println("[emotes] updating 3rd-party emote cache")
-	emoteCache.StartedUpdating = now
+	emotes.EmoteCache.StartedUpdating = now
 
-	globalMap, errGlob := FetchAllGlobalEmotes()
+	globalMap, errGlob := emotes.FetchAllGlobalEmotes()
 	if errGlob != nil {
 		log.Println("some global fetch error:", errGlob)
 	}
@@ -1339,12 +1328,12 @@ func updateEmoteCacheIfNeeded() {
 		newMap[code] = url
 	}
 
-	channelID, err := getTwitchChannelID(TWITCH_CHANNEL, TWITCH_CLIENT_ID, TWITCH_SECRET)
+	channelID, err := twitchApi.GetTwitchChannelID(TWITCH_CHANNEL, TWITCH_CLIENT_ID, TWITCH_SECRET)
 	if err != nil {
 		log.Println("[emotes] Error getting channel ID:", err)
 	} else {
 		log.Printf("[emotes] Channel %s has ID=%d\n", TWITCH_CHANNEL, channelID)
-		channelMap, errChan := FetchAllChannelEmotes(channelID)
+		channelMap, errChan := emotes.FetchAllChannelEmotes(channelID)
 		if errChan != nil {
 			log.Println("[emotes] some channel fetch error:", errChan)
 		}
@@ -1354,9 +1343,9 @@ func updateEmoteCacheIfNeeded() {
 	}
 
 	// Save into your main cache
-	emoteCache.Emotes = newMap
-	emoteCache.LastUpdated = now
-	emoteCache.StartedUpdating = time.Time{}
+	emotes.EmoteCache.Emotes = newMap
+	emotes.EmoteCache.LastUpdated = now
+	emotes.EmoteCache.StartedUpdating = time.Time{}
 
 	log.Println("[emotes] done updating 3rd-party emote cache")
 }

@@ -1,4 +1,4 @@
-package main
+package emotes
 
 import (
 	"encoding/json"
@@ -9,7 +9,25 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
+
+var (
+	EmoteCache = &emoteCacheData{
+		Emotes:          make(map[string]string),
+		LastUpdated:     time.Time{},
+		StartedUpdating: time.Time{},
+	}
+	EmoteLock sync.Mutex
+)
+
+type emoteCacheData struct {
+	Emotes          map[string]string // code => URL
+	Connections     map[string]bool   // e.g., "global_bttv" => true
+	LastUpdated     time.Time
+	StartedUpdating time.Time
+}
 
 // Twitch official emote
 func TwitchCDN(id string, size int) string {
@@ -369,17 +387,17 @@ func getYouTubeEmotes() map[string]string {
 
 // find3rdPartyEmotes scans the user’s raw text for codes that match the known emotes from our cache
 // and returns a map[url] => []ranges, same as the Node version does.
-func find3rdPartyEmotes(msg string) map[string][]string {
+func Find3rdPartyEmotes(msg string) map[string][]string {
 	youtubeEmotes := getYouTubeEmotes()
 
 	emotes := make(map[string][]string)
-	emoteLock.Lock()
-	defer emoteLock.Unlock()
+	EmoteLock.Lock()
+	defer EmoteLock.Unlock()
 
 	words := strings.Fields(msg)
 	pos := 0
 	for _, w := range words {
-		if url, ok := emoteCache.Emotes[w]; ok {
+		if url, ok := EmoteCache.Emotes[w]; ok {
 			start := pos
 			end := pos + len(w) - 1
 			emotes[url] = append(emotes[url], fmt.Sprintf("%d-%d", start, end))

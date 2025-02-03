@@ -1,4 +1,4 @@
-module main-container
+module multibot/main-container
 
 go 1.23.0
 
