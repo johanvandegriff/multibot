@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"multibot/common/env"
-	"multibot/common/redisClient"
+	"multibot/common/src/env"
+	"multibot/common/src/redisClient"
 )
 
 const (

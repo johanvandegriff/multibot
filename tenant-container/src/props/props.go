@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"multibot/common/env"
-	"multibot/common/redisClient"
-	"multibot/tenant-container/src/multiChat"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"multibot/common/src/env"
+	"multibot/common/src/redisClient"
+
+	"multibot/tenant-container/src/multiChat"
 )
 
 var (

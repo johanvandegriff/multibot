@@ -11,7 +11,8 @@ import (
 	goaway "github.com/TwiN/go-away"
 	"github.com/gempir/go-twitch-irc/v4"
 
-	"multibot/common/env"
+	"multibot/common/src/env"
+
 	"multibot/tenant-container/src/multiChat"
 	"multibot/tenant-container/src/props"
 )

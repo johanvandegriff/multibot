@@ -7,7 +7,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"multibot/common/env"
+	"multibot/common/src/env"
 )
 
 const (

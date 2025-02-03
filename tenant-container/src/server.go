@@ -12,8 +12,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"multibot/common/env"
-	"multibot/common/redisClient"
+	"multibot/common/src/env"
+	"multibot/common/src/redisClient"
+	"multibot/common/src/redisSession"
+
 	"multibot/tenant-container/src/emotes"
 	"multibot/tenant-container/src/frontend"
 	"multibot/tenant-container/src/kickChat"
@@ -23,8 +25,6 @@ import (
 	"multibot/tenant-container/src/twitchChat"
 	"multibot/tenant-container/src/youtubeApi"
 	"multibot/tenant-container/src/youtubeChat"
-
-	"multibot/common/redisSession"
 )
 
 const (

@@ -11,7 +11,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"multibot/common/env"
+	"multibot/common/src/env"
+
 	"multibot/tenant-container/src/emotes"
 	"multibot/tenant-container/src/frontend"
 )

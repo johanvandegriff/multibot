@@ -20,10 +20,9 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/twitch"
 
-	"multibot/common/env"
-	"multibot/common/redisClient"
-	"multibot/common/redisSession"
-
+	"multibot/common/src/env"
+	"multibot/common/src/redisClient"
+	"multibot/common/src/redisSession"
 	"multibot/main-container/src/k8s"
 )
 

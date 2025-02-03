@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"multibot/common/env"
-	"multibot/tenant-container/src/twitchApi"
 	"net/http"
 	"os"
 	"regexp"
@@ -13,6 +11,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"multibot/common/src/env"
+
+	"multibot/tenant-container/src/twitchApi"
 )
 
 const (
