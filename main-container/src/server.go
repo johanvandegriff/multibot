@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"time"
 
 	"encoding/gob"
@@ -19,159 +18,19 @@ import (
 
 	"github.com/gorilla/mux"
 
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
-
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/twitch"
 
+	"multibot/common/env"
 	"multibot/common/redisSession"
+
+	"multibot/main-container/src/k8s"
 )
 
 var (
-	k8sClient         *kubernetes.Clientset
 	twitchOAuthConfig *oauth2.Config
 	indexTemplate     *template.Template
-
-	DISABLE_K8S                 = os.Getenv("DISABLE_K8S") == "true"
-	TWITCH_SUPER_ADMIN_USERNAME = os.Getenv("TWITCH_SUPER_ADMIN_USERNAME")
-	BASE_URL                    = os.Getenv("BASE_URL")
-	TWITCH_CLIENT_ID            = os.Getenv("TWITCH_CLIENT_ID")
-	TWITCH_SECRET               = os.Getenv("TWITCH_SECRET")
 )
-
-func loadTenantYAML(channel string) (*appsv1.Deployment, *corev1.Service, error) {
-	fileBytes, err := os.ReadFile("tenant-container.yaml")
-	if err != nil {
-		return nil, nil, err
-	}
-	text := string(fileBytes)
-	text = strings.ReplaceAll(text, "{{IMAGE}}", os.Getenv("DOCKER_USERNAME")+"/multibot-tenant:latest")
-	text = strings.ReplaceAll(text, "{{IMAGE_PULL_POLICY}}", os.Getenv("IMAGE_PULL_POLICY"))
-	text = strings.ReplaceAll(text, "{{CHANNEL}}", channel)
-
-	splitYaml := strings.Split(text, "---")
-	if len(splitYaml) != 2 {
-		return nil, nil, fmt.Errorf("expected exactly 2 YAML docs (deployment, service)")
-	}
-
-	// Create a universal deserializer from client-go.
-	decoder := scheme.Codecs.UniversalDeserializer()
-
-	// Decode the deployment YAML.
-	obj, _, err := decoder.Decode([]byte(splitYaml[0]), nil, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error decoding deployment YAML: %w", err)
-	}
-	dep, ok := obj.(*appsv1.Deployment)
-	if !ok {
-		return nil, nil, fmt.Errorf("decoded object is not a *appsv1.Deployment")
-	}
-
-	// Decode the service YAML.
-	objSvc, _, err := decoder.Decode([]byte(splitYaml[1]), nil, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error decoding service YAML: %w", err)
-	}
-	svc, ok := objSvc.(*corev1.Service)
-	if !ok {
-		return nil, nil, fmt.Errorf("decoded object is not a *corev1.Service")
-	}
-
-	return dep, svc, nil
-}
-
-func createTenantContainer(channel string) bool {
-	dep, svc, err := loadTenantYAML(channel)
-	if err != nil {
-		log.Printf("error loading tenant YAML: %v\n", err)
-		return false
-	}
-	ctx := context.Background()
-
-	depNamespace := dep.GetNamespace()
-	if depNamespace == "" {
-		return false
-	}
-	if !DISABLE_K8S {
-		if _, err := k8sClient.AppsV1().Deployments(depNamespace).Create(ctx, dep, metav1.CreateOptions{}); err != nil {
-			log.Printf("Error creating Deployment %q in ns %q: %v\n", dep.Name, depNamespace, err)
-			return false
-		}
-		log.Printf("Created Deployment %q in ns %q\n", dep.Name, depNamespace)
-	}
-
-	svcNamespace := svc.GetNamespace()
-	if svcNamespace == "" {
-		return false
-	}
-	if !DISABLE_K8S {
-		if _, err := k8sClient.CoreV1().Services(svcNamespace).Create(ctx, svc, metav1.CreateOptions{}); err != nil {
-			log.Printf("Error creating Service %q in ns %q: %v\n", svc.Name, svcNamespace, err)
-			return false
-		}
-		log.Printf("Created Service %q in ns %q\n", svc.Name, svcNamespace)
-	}
-	return true
-}
-
-func deleteTenantContainer(channel string) bool {
-	dep, svc, err := loadTenantYAML(channel)
-	if err != nil {
-		log.Printf("error loading tenant YAML: %v\n", err)
-		return false
-	}
-	ctx := context.Background()
-
-	depNamespace := dep.GetNamespace()
-	if depNamespace == "" {
-		return false
-	}
-	if !DISABLE_K8S {
-		if err := k8sClient.AppsV1().Deployments(depNamespace).Delete(ctx, dep.Name, metav1.DeleteOptions{}); err != nil {
-			log.Printf("Error deleting Deployment %q in ns %q: %v\n", dep.Name, depNamespace, err)
-			return false
-		}
-		log.Printf("Deleted Deployment %q in ns %q\n", dep.Name, depNamespace)
-	}
-
-	svcNamespace := svc.GetNamespace()
-	if svcNamespace == "" {
-		return false
-	}
-	if !DISABLE_K8S {
-		if err := k8sClient.CoreV1().Services(svcNamespace).Delete(ctx, svc.Name, metav1.DeleteOptions{}); err != nil {
-			log.Printf("Error deleting Service %q in ns %q: %v\n", svc.Name, svcNamespace, err)
-			return false
-		}
-		log.Printf("Deleted Service %q in ns %q\n", svc.Name, svcNamespace)
-	}
-	return true
-}
-
-func isSuperAdmin(user *twitchUser) bool {
-	if user == nil {
-		return false
-	}
-	return strings.EqualFold(user.Login, TWITCH_SUPER_ADMIN_USERNAME)
-}
-
-// small helper to retrieve the current user from the session
-func getSessionUser(r *http.Request) *twitchUser {
-	session := redisSession.GetSession(r)
-	if session == nil {
-		return nil
-	}
-	user, ok := session.Data["twitch_user"].(*twitchUser)
-	if !ok {
-		return nil
-	}
-	return user
-}
 
 // channelAuthMiddleware ensures the user is either the channel owner or super admin
 func channelAuthMiddleware(next http.Handler) http.Handler {
@@ -179,8 +38,8 @@ func channelAuthMiddleware(next http.Handler) http.Handler {
 		vars := mux.Vars(r)
 		channel := vars["channel"]
 
-		user := getSessionUser(r)
-		if user.Login == channel || isSuperAdmin(user) {
+		user, isSuperAdmin := redisSession.GetSessionUser(r)
+		if user.Login == channel || isSuperAdmin {
 			next.ServeHTTP(w, r)
 		} else {
 			http.Error(w, "Forbidden", http.StatusForbidden)
@@ -209,7 +68,7 @@ func onboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !createTenantContainer(channel) {
+	if !k8s.CreateTenantContainer(channel) {
 		http.Error(w, "error creating tenant", http.StatusInternalServerError)
 		return
 	}
@@ -245,7 +104,7 @@ func offboardHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "channel not onboarded", http.StatusConflict)
 		return
 	}
-	if !deleteTenantContainer(channel) {
+	if !k8s.DeleteTenantContainer(channel) {
 		http.Error(w, "error deleting tenant", http.StatusInternalServerError)
 		return
 	}
@@ -265,11 +124,7 @@ func offboardHandler(w http.ResponseWriter, r *http.Request) {
 
 // logoutHandler -> /api/logout
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
-	session := redisSession.GetSession(r)
-	if session == nil {
-		return
-	}
-	delete(session.Data, "twitch_user")
+	redisSession.DeleteSessionUser(r)
 	// optional: redirect to homepage or other
 	returnTo := r.URL.Query().Get("returnTo")
 	if returnTo == "" {
@@ -281,7 +136,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 // indexHandler -> GET /
 func indexHandler(w http.ResponseWriter, r *http.Request) {
-	user := getSessionUser(r) // returns *User or nil
+	user, isSuperAdmin := redisSession.GetSessionUser(r) // returns *User or nil
 
 	// Safely log user
 	if user == nil {
@@ -304,7 +159,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		"channel":        nil,
 		"channels":       strings.Join(channels, ","),
 		"user":           string(userBytes), // can be nil, that’s fine for the template
-		"is_super_admin": isSuperAdmin(user),
+		"is_super_admin": isSuperAdmin,
 	}
 	indexTemplate.Execute(w, data)
 }
@@ -318,21 +173,7 @@ func twitchLoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type twitchUserResp struct {
-	Data []twitchUser `json:"data"`
-}
-
-type twitchUser struct {
-	ID              string `json:"id"`
-	Login           string `json:"login"`
-	DisplayName     string `json:"display_name"`
-	Type            string `json:"type"`
-	BroadcasterType string `json:"broadcaster_type"`
-	Description     string `json:"description"`
-	ProfileImageUrl string `json:"profile_image_url"`
-	OfflineImageUrl string `json:"offline_image_url"`
-	ViewCount       int    `json:"view_count"`
-	Email           string `json:"email"`
-	CreatedAt       string `json:"created_at"`
+	Data []redisSession.TwitchUser `json:"data"`
 }
 
 func twitchCallbackHandler(w http.ResponseWriter, r *http.Request) {
@@ -369,7 +210,7 @@ func twitchCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Add the required Client-ID header
-	req.Header.Set("Client-ID", os.Getenv("TWITCH_CLIENT_ID"))
+	req.Header.Set("Client-ID", env.TWITCH_CLIENT_ID)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -417,12 +258,11 @@ func twitchCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("twitchUser parsed from twitch:", user.Login)
 
 	// Save user to session
-	session := redisSession.GetSession(r)
-	if session == nil {
-		http.Error(w, fmt.Sprintf("Session error: %v", err), http.StatusInternalServerError)
+	err = redisSession.SetSessionUser(r, &user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	session.Data["twitch_user"] = &user
 
 	channel := user.Login
 	inSet, err := redisSession.Rdb.SIsMember(ctx, redisSession.PREDIS+"channels", channel).Result()
@@ -440,20 +280,21 @@ func twitchCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var proxyOverrides = make(map[string]string)
+func parseProxyOverrides() map[string]string {
+	proxyOverrides := make(map[string]string)
 
-func loadProxyOverrides() {
-	envVal := os.Getenv("PROXY_OVERRIDES")
-	if envVal == "" {
-		return
+	if env.PROXY_OVERRIDES == "" {
+		return nil
 	}
-	if err := json.Unmarshal([]byte(envVal), &proxyOverrides); err != nil {
+	if err := json.Unmarshal([]byte(env.PROXY_OVERRIDES), &proxyOverrides); err != nil {
 		log.Printf("Error parsing PROXY_OVERRIDES: %v\n", err)
-		return
+		return nil
 	}
 	for channel, target := range proxyOverrides {
 		log.Printf("[proxy override] %s => %s\n", channel, target)
 	}
+
+	return proxyOverrides
 }
 
 func createSingleHostProxy(target string) http.Handler {
@@ -474,66 +315,31 @@ func createSingleHostProxy(target string) http.Handler {
 }
 
 func main() {
-	gob.Register(&twitchUser{})
-	// --------------------------------------------------------------------------
-	// 1) Load environment variables
-	// --------------------------------------------------------------------------
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "80"
-	}
-
+	gob.Register(&redisSession.TwitchUser{})
 	redisSession.Init()
 
-	// --------------------------------------------------------------------------
-	// 4) Connect to Kubernetes (in-cluster)
-	// --------------------------------------------------------------------------
-	if !DISABLE_K8S {
-		config, err := rest.InClusterConfig()
-		if err != nil {
-			log.Fatalf("Error building kube config: %v\n", err)
-		}
-		k8sClient, err = kubernetes.NewForConfig(config)
-		if err != nil {
-			log.Fatalf("Error creating Kubernetes client: %v\n", err)
-		}
-	}
-
-	// --------------------------------------------------------------------------
-	// 5) Pre-create any tenant containers for existing channels in Redis
-	// --------------------------------------------------------------------------
+	// Pre-create any tenant containers for existing channels in Redis
 	channels, _ := redisSession.Rdb.SMembers(context.Background(), redisSession.PREDIS+"channels").Result()
 	log.Printf("channels onboarded: %v\n", channels)
-	if !DISABLE_K8S {
-		for _, c := range channels {
-			// Spin them up in parallel
-			go createTenantContainer(c)
-		}
-	}
+	k8s.Init(channels)
 
-	// --------------------------------------------------------------------------
-	// 6) Set up Twitch OAuth config
-	// --------------------------------------------------------------------------
+	// Set up Twitch OAuth config
 	twitchOAuthConfig = &oauth2.Config{
-		ClientID:     TWITCH_CLIENT_ID,
-		ClientSecret: TWITCH_SECRET,
-		RedirectURL:  BASE_URL + "/api/auth/twitch/callback",
+		ClientID:     env.TWITCH_CLIENT_ID,
+		ClientSecret: env.TWITCH_SECRET,
+		RedirectURL:  env.BASE_URL + "/api/auth/twitch/callback",
 		Scopes:       []string{"user_read"}, // Example
 		Endpoint:     twitch.Endpoint,
 	}
 
-	// --------------------------------------------------------------------------
-	// 7) Load index template
-	// --------------------------------------------------------------------------
+	// Load index template
 	var errTmpl error
 	indexTemplate, errTmpl = template.ParseFiles("index.html") // simplistic approach
 	if errTmpl != nil {
 		log.Fatalf("Error loading index.html template: %v\n", errTmpl)
 	}
 
-	// --------------------------------------------------------------------------
-	// 8) Router setup
-	// --------------------------------------------------------------------------
+	// Router setup
 	router := mux.NewRouter()
 
 	// Register the session middleware so that all routes have session handling.
@@ -551,10 +357,7 @@ func main() {
 	router.Handle("/api/onboard/{channel}", channelAuthMiddleware(http.HandlerFunc(onboardHandler)))
 	router.Handle("/api/offboard/{channel}", channelAuthMiddleware(http.HandlerFunc(offboardHandler)))
 
-	// Logout
 	router.HandleFunc("/api/logout", logoutHandler)
-
-	// Root endpoint
 	router.HandleFunc("/", indexHandler)
 
 	// Tell the router to use that file server for all /static/* paths
@@ -568,8 +371,7 @@ func main() {
 	})
 
 	//create separate routes for proxy overrides, only used to run locally without k8s
-	loadProxyOverrides()
-	for channel, target := range proxyOverrides {
+	for channel, target := range parseProxyOverrides() {
 		routePath := "/" + channel
 		router.PathPrefix(routePath).Handler(
 			http.StripPrefix(routePath, createSingleHostProxy(target)),
@@ -618,9 +420,9 @@ func main() {
 
 	srv := &http.Server{
 		Handler: router,
-		Addr:    ":" + port,
+		Addr:    ":" + env.PORT,
 	}
 
-	log.Printf("listening on port %s", port)
+	log.Printf("listening on port %s", env.PORT)
 	log.Fatal(srv.ListenAndServe())
 }

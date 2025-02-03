@@ -3,23 +3,27 @@ package redisSession
 import (
 	"bytes"
 	"context"
+	"encoding/gob"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
-
-	"encoding/gob"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+
+	"multibot/common/env"
 )
 
 const (
-	REDIS_NAMESPACE = "multibot"
-	PREDIS          = REDIS_NAMESPACE + ":"
-	SESSION_PREFIX  = PREDIS + "sessions/" // Prefix for session keys in Redis.
-	SESSION_COOKIE  = "session_id"         // Name of the cookie that stores the session ID.
-	SESSION_TTL     = 30 * time.Minute     // How long a session lives in Redis.
+	REDIS_NAMESPACE  = "multibot"
+	PREDIS           = REDIS_NAMESPACE + ":"
+	SESSION_PREFIX   = PREDIS + "sessions/" // Prefix for session keys in Redis.
+	SESSION_COOKIE   = "session_id"         // Name of the cookie that stores the session ID.
+	SESSION_USER_KEY = "twitch_user"        // Name of the key to store and retrieve the user.
+	SESSION_TTL      = 30 * time.Minute     // How long a session lives in Redis.
 )
 
 var (
@@ -121,12 +125,57 @@ func SessionMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func GetSession(r *http.Request) *Session {
+func getSession(r *http.Request) *Session {
 	session, ok := r.Context().Value("session").(*Session)
 	if !ok {
 		return nil
 	}
 	return session
+}
+
+type TwitchUser struct {
+	ID              string `json:"id"`
+	Login           string `json:"login"`
+	DisplayName     string `json:"display_name"`
+	Type            string `json:"type"`
+	BroadcasterType string `json:"broadcaster_type"`
+	Description     string `json:"description"`
+	ProfileImageUrl string `json:"profile_image_url"`
+	OfflineImageUrl string `json:"offline_image_url"`
+	ViewCount       int    `json:"view_count"`
+	Email           string `json:"email"`
+	CreatedAt       string `json:"created_at"`
+}
+
+// retrieve the current user from the session
+func GetSessionUser(r *http.Request) (*TwitchUser, bool) {
+	session := getSession(r)
+	if session == nil {
+		return nil, false
+	}
+	user, ok := session.Data[SESSION_USER_KEY].(*TwitchUser)
+	if !ok || user == nil {
+		return nil, false
+	}
+	isSuperAdmin := strings.EqualFold(user.Login, env.TWITCH_SUPER_ADMIN_USERNAME)
+	return user, isSuperAdmin
+}
+
+func SetSessionUser(r *http.Request, user *TwitchUser) error {
+	session := getSession(r)
+	if session == nil {
+		return fmt.Errorf("session error: session is nil")
+	}
+	session.Data[SESSION_USER_KEY] = user
+	return nil
+}
+
+func DeleteSessionUser(r *http.Request) {
+	session := getSession(r)
+	if session == nil {
+		return
+	}
+	delete(session.Data, SESSION_USER_KEY)
 }
 
 func Init() {

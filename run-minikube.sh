@@ -21,8 +21,8 @@ docker build -t "$DOCKER_USERNAME/multibot-tenant:latest" -f tenant-container/Do
 
 # kubectl -n $ns delete deployment state-db
 # kubectl -n $ns delete service state-db
-kubectl -n $ns delete deployment main-container
-kubectl -n $ns delete service main-container-svc
+kubectl -n $ns delete deployment main-container || :
+kubectl -n $ns delete service main-container-svc || :
 for deployment in $(kubectl -n $ns get deployments -o custom-columns=NAME:.metadata.name --no-headers -l group=tenant-containers); do
   kubectl -n $ns delete deployment $deployment
   kubectl -n $ns delete service $deployment-svc
@@ -68,7 +68,7 @@ if [[ "$USE_LOAD_BALANCER" == true ]]; then
       ip_and_port=$(kubectl -n $ns get services main-container-svc | awk '{split($5,a,":"); print $4 ":" a[1]}' | tail -1)
       # ip=$(kubectl -n $ns get services main-container-svc | awk 'print $4' | tail -1)
       echo "$ip_and_port"
-      sleep 0.1
+      sleep 1
   done
 
   echo "

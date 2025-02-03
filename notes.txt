@@ -237,7 +237,8 @@ jjbotbot-k8s-node-pool-2-gchh8   135m         7%     1978Mi          63%
 NEW FEATURES TO ADD:
 +on frontend, update nickname in chat when it changes
 +move session stuff to its own file
-share session code between both containers
++share session code between both containers
++split things into separate packages
 link to twitch, yt, etc. on a channel page even when not logged in
 RTMP livestream splitting with 2nd tenant container
 OBS container hosting with 3rd tenant container

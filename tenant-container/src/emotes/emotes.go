@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"multibot/common/env"
+	"multibot/tenant-container/src/twitchApi"
 	"net/http"
 	"os"
 	"regexp"
@@ -13,14 +15,26 @@ import (
 	"time"
 )
 
+const (
+	EMOTE_STARTUP_DELAY = 2 * time.Minute
+	EMOTE_CACHE_TIME    = 1 * time.Hour
+	EMOTE_RETRY_TIME    = 30 * time.Second
+)
+
 var (
-	EmoteCache = &emoteCacheData{
+	emoteCache = &emoteCacheData{
 		Emotes:          make(map[string]string),
 		LastUpdated:     time.Time{},
 		StartedUpdating: time.Time{},
 	}
-	EmoteLock sync.Mutex
+	emoteLock     sync.Mutex
+	youtubeEmotes = make(map[string]string) // Maps `:emote_code:` -> Emote URL
 )
+
+type YoutubeEmote struct {
+	ID   string `json:"id"`
+	Code string `json:"code"`
+}
 
 type emoteCacheData struct {
 	Emotes          map[string]string // code => URL
@@ -29,46 +43,37 @@ type emoteCacheData struct {
 	StartedUpdating time.Time
 }
 
-// Twitch official emote
-func TwitchCDN(id string, size int) string {
+func twitchCDN(id string, size int) string {
 	// size=0 => "1.0", size=1 => "2.0", etc.
 	return fmt.Sprintf("https://static-cdn.jtvnw.net/emoticons/v2/%s/default/dark/%d.0", id, size+1)
 }
-
-// BTTV
-func BTTVGlobalEndpoint() string { return "https://api.betterttv.net/3/cached/emotes/global" }
-func BTTVChannelEndpoint(twitchUserID int) string {
+func bttvGlobalEndpoint() string { return "https://api.betterttv.net/3/cached/emotes/global" }
+func bttvChannelEndpoint(twitchUserID int) string {
 	return fmt.Sprintf("https://api.betterttv.net/3/cached/users/twitch/%d", twitchUserID)
 }
-func BTTVCDN(id string, size int) string {
+func bttvCDN(id string, size int) string {
 	// size=0 => "1x", size=1 => "2x", etc.
 	return fmt.Sprintf("https://cdn.betterttv.net/emote/%s/%dx.webp", id, size+1)
 }
-
-// 7TV
-func SevenTVGlobalEndpoint() string { return "https://7tv.io/v3/emote-sets/global" }
-func SevenTVChannelEndpoint(twitchUserID int) string {
-	// 7tv uses: /v3/users/twitch/<id> for channel
+func sevenTVGlobalEndpoint() string { return "https://7tv.io/v3/emote-sets/global" }
+func sevenTVChannelEndpoint(twitchUserID int) string {
 	return fmt.Sprintf("https://7tv.io/v3/users/twitch/%d", twitchUserID)
 }
-func SevenTVCDN(id string, size string) string {
+func sevenTVCDN(id string, size string) string {
 	// size might be "1x.webp", "2x.webp", "3x.webp" etc.
 	return fmt.Sprintf("https://cdn.7tv.app/emote/%s/%s", id, size)
 }
-
-// FFZ
-func FFZSetEndpoint(setID int) string {
+func ffzSetEndpoint(setID int) string {
 	return fmt.Sprintf("https://api.frankerfacez.com/v1/set/%d", setID)
 }
-func FFZChannelEndpoint(twitchUserID int) string {
-	// e.g. "https://api.frankerfacez.com/v1/room/id/123456"
+func ffzChannelEndpoint(twitchUserID int) string {
 	return fmt.Sprintf("https://api.frankerfacez.com/v1/room/id/%d", twitchUserID)
 }
-func FFZCDN(id string, size int) string {
+func ffzCDN(id string, size int) string {
 	// size=1 => ".../1", size=2 => ".../2", etc.
 	return fmt.Sprintf("https://cdn.frankerfacez.com/emote/%s/%d", id, size)
 }
-func FFZCDNAnimated(id string, size int) string {
+func ffzCDNAnimated(id string, size int) string {
 	return fmt.Sprintf("https://cdn.frankerfacez.com/emote/%s/animated/%d.webp", id, size)
 }
 
@@ -125,9 +130,9 @@ type ffzEmote struct {
 }
 
 // Fetch global BTTV emotes
-func FetchBTTVGlobal() (map[string]string, error) {
+func fetchBTTVGlobal() (map[string]string, error) {
 	out := make(map[string]string)
-	resp, err := http.Get(BTTVGlobalEndpoint())
+	resp, err := http.Get(bttvGlobalEndpoint())
 	if err != nil {
 		return out, err
 	}
@@ -139,15 +144,15 @@ func FetchBTTVGlobal() (map[string]string, error) {
 	}
 	// map code => CDN URL (size=2 => "3x.webp" if you want bigger)
 	for _, e := range emotes {
-		out[e.Code] = BTTVCDN(e.ID, 2) // 2 => "3x"
+		out[e.Code] = bttvCDN(e.ID, 2) // 2 => "3x"
 	}
 	return out, nil
 }
 
 // Fetch channel BTTV emotes by numeric Twitch userID
-func FetchBTTVChannel(twitchUserID int) (map[string]string, error) {
+func fetchBTTVChannel(twitchUserID int) (map[string]string, error) {
 	out := make(map[string]string)
-	url := BTTVChannelEndpoint(twitchUserID)
+	url := bttvChannelEndpoint(twitchUserID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return out, err
@@ -164,18 +169,18 @@ func FetchBTTVChannel(twitchUserID int) (map[string]string, error) {
 	}
 	// Combine channelEmotes + sharedEmotes
 	for _, e := range data.ChannelEmotes {
-		out[e.Code] = BTTVCDN(e.ID, 2)
+		out[e.Code] = bttvCDN(e.ID, 2)
 	}
 	for _, e := range data.SharedEmotes {
-		out[e.Code] = BTTVCDN(e.ID, 2)
+		out[e.Code] = bttvCDN(e.ID, 2)
 	}
 	return out, nil
 }
 
 // Fetch 7TV global emotes
-func Fetch7TVGlobal() (map[string]string, error) {
+func fetch7TVGlobal() (map[string]string, error) {
 	out := make(map[string]string)
-	resp, err := http.Get(SevenTVGlobalEndpoint())
+	resp, err := http.Get(sevenTVGlobalEndpoint())
 	if err != nil {
 		return out, err
 	}
@@ -192,15 +197,15 @@ func Fetch7TVGlobal() (map[string]string, error) {
 	// data.Emotes => each has ID, Name
 	for _, e := range data.Emotes {
 		// pick "2x.webp" for bigger, or "3x.webp" if you prefer
-		out[e.Name] = SevenTVCDN(e.ID, "3x.webp")
+		out[e.Name] = sevenTVCDN(e.ID, "3x.webp")
 	}
 	return out, nil
 }
 
 // Fetch 7TV channel emotes
-func Fetch7TVChannel(twitchUserID int) (map[string]string, error) {
+func fetch7TVChannel(twitchUserID int) (map[string]string, error) {
 	out := make(map[string]string)
-	url := SevenTVChannelEndpoint(twitchUserID)
+	url := sevenTVChannelEndpoint(twitchUserID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return out, err
@@ -215,7 +220,7 @@ func Fetch7TVChannel(twitchUserID int) (map[string]string, error) {
 		return out, err
 	}
 	for _, e := range userData.EmoteSet.Emotes {
-		out[e.Name] = SevenTVCDN(e.ID, "3x.webp")
+		out[e.Name] = sevenTVCDN(e.ID, "3x.webp")
 	}
 	return out, nil
 }
@@ -223,10 +228,10 @@ func Fetch7TVChannel(twitchUserID int) (map[string]string, error) {
 // For FFZ "global sets", you can fetch set 3 or others from your Node snippet.
 // Or you can fetch them from the "v1/set/global" route.
 // But let's do set=3 (the "main" global set).
-func FetchFFZGlobal() (map[string]string, error) {
+func fetchFFZGlobal() (map[string]string, error) {
 	out := make(map[string]string)
 	const globalSetID = 3
-	url := FFZSetEndpoint(globalSetID)
+	url := ffzSetEndpoint(globalSetID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return out, err
@@ -246,9 +251,9 @@ func FetchFFZGlobal() (map[string]string, error) {
 		for _, e := range setData.Emoticons {
 			if e.Animated {
 				// we can pick size=2 for bigger
-				out[e.Name] = FFZCDNAnimated(strconv.Itoa(e.ID), 2)
+				out[e.Name] = ffzCDNAnimated(strconv.Itoa(e.ID), 2)
 			} else {
-				out[e.Name] = FFZCDN(strconv.Itoa(e.ID), 2)
+				out[e.Name] = ffzCDN(strconv.Itoa(e.ID), 2)
 			}
 		}
 	}
@@ -256,9 +261,9 @@ func FetchFFZGlobal() (map[string]string, error) {
 }
 
 // Fetch channel-specific FFZ emotes
-func FetchFFZChannel(twitchUserID int) (map[string]string, error) {
+func fetchFFZChannel(twitchUserID int) (map[string]string, error) {
 	out := make(map[string]string)
-	url := FFZChannelEndpoint(twitchUserID)
+	url := ffzChannelEndpoint(twitchUserID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return out, err
@@ -276,91 +281,20 @@ func FetchFFZChannel(twitchUserID int) (map[string]string, error) {
 	for _, setData := range data.Sets {
 		for _, e := range setData.Emoticons {
 			if e.Animated {
-				out[e.Name] = FFZCDNAnimated(strconv.Itoa(e.ID), 2)
+				out[e.Name] = ffzCDNAnimated(strconv.Itoa(e.ID), 2)
 			} else {
-				out[e.Name] = FFZCDN(strconv.Itoa(e.ID), 2)
+				out[e.Name] = ffzCDN(strconv.Itoa(e.ID), 2)
 			}
 		}
 	}
 	return out, nil
 }
 
-func FetchAllGlobalEmotes() (map[string]string, error) {
-	emotes := make(map[string]string)
-
-	// 1. BTTV Global
-	if bttvMap, err := FetchBTTVGlobal(); err == nil {
-		for code, url := range bttvMap {
-			emotes[code] = url
-		}
-	} else {
-		// handle error or log
-	}
-
-	// 2. 7TV Global
-	if stvMap, err := Fetch7TVGlobal(); err == nil {
-		for code, url := range stvMap {
-			emotes[code] = url
-		}
-	} else {
-		// handle error or log
-	}
-
-	// 3. FFZ Global
-	if ffzMap, err := FetchFFZGlobal(); err == nil {
-		for code, url := range ffzMap {
-			emotes[code] = url
-		}
-	} else {
-		// handle error
-	}
-
-	// Return the combined map
-	return emotes, nil
-}
-
-// Example for channel
-func FetchAllChannelEmotes(twitchUserID int) (map[string]string, error) {
-	emotes := make(map[string]string)
-
-	// BTTV
-	if bttvMap, err := FetchBTTVChannel(twitchUserID); err == nil {
-		for code, url := range bttvMap {
-			emotes[code] = url
-		}
-	}
-
-	// 7TV
-	if stvMap, err := Fetch7TVChannel(twitchUserID); err == nil {
-		for code, url := range stvMap {
-			emotes[code] = url
-		}
-	}
-
-	// FFZ
-	if ffzMap, err := FetchFFZChannel(twitchUserID); err == nil {
-		for code, url := range ffzMap {
-			emotes[code] = url
-		}
-	}
-
-	return emotes, nil
-}
-
-type YoutubeEmote struct {
-	ID   string `json:"id"`
-	Code string `json:"code"`
-}
-
-var (
-	_youtubeEmotes = make(map[string]string) // Maps `:emote_code:` -> Emote URL
-)
-
 // Load YouTube emotes from a local JSON file
 func getYouTubeEmotes() map[string]string {
-	if len(_youtubeEmotes) > 0 {
-		log.Printf("[youtube] %d emotes already loaded, skipping", len(_youtubeEmotes))
-		return _youtubeEmotes
+	if len(youtubeEmotes) > 0 {
+		log.Printf("[youtube] %d emotes already loaded, skipping", len(youtubeEmotes))
+		return youtubeEmotes
 	}
 	filename := "yt.json"
 	data, err := os.ReadFile(filename)
@@ -380,9 +314,9 @@ func getYouTubeEmotes() map[string]string {
 		newEmoteMap[e.Code] = e.ID
 	}
 
-	_youtubeEmotes = newEmoteMap
-	log.Printf("[youtube] loaded %d emotes", len(_youtubeEmotes))
-	return _youtubeEmotes
+	youtubeEmotes = newEmoteMap
+	log.Printf("[youtube] loaded %d emotes", len(youtubeEmotes))
+	return youtubeEmotes
 }
 
 // find3rdPartyEmotes scans the user’s raw text for codes that match the known emotes from our cache
@@ -391,13 +325,13 @@ func Find3rdPartyEmotes(msg string) map[string][]string {
 	youtubeEmotes := getYouTubeEmotes()
 
 	emotes := make(map[string][]string)
-	EmoteLock.Lock()
-	defer EmoteLock.Unlock()
+	emoteLock.Lock()
+	defer emoteLock.Unlock()
 
 	words := strings.Fields(msg)
 	pos := 0
 	for _, w := range words {
-		if url, ok := EmoteCache.Emotes[w]; ok {
+		if url, ok := emoteCache.Emotes[w]; ok {
 			start := pos
 			end := pos + len(w) - 1
 			emotes[url] = append(emotes[url], fmt.Sprintf("%d-%d", start, end))
@@ -433,4 +367,132 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func EmoteCacheRefresher() {
+	// wait a bit after startup
+	time.Sleep(EMOTE_STARTUP_DELAY)
+	for {
+		UpdateEmoteCacheIfNeeded()
+		time.Sleep(EMOTE_CACHE_TIME)
+	}
+}
+
+func UpdateEmoteCacheIfNeeded() {
+	emoteLock.Lock()
+	defer emoteLock.Unlock()
+
+	now := time.Now()
+	log.Println(now, "|", emoteCache.LastUpdated, "|", EMOTE_CACHE_TIME, "|", emoteCache.StartedUpdating, "|", EMOTE_RETRY_TIME)
+	if !emoteCache.LastUpdated.IsZero() && now.Before(emoteCache.LastUpdated.Add(EMOTE_CACHE_TIME)) {
+		log.Println("[emotes] 3rd-party emote cache already updated")
+		return
+	}
+
+	if !emoteCache.StartedUpdating.IsZero() && now.Before(emoteCache.StartedUpdating.Add(EMOTE_RETRY_TIME)) {
+		log.Println("[emotes] emote cache update in progress, skipping")
+		return
+	}
+
+	log.Println("[emotes] updating 3rd-party emote cache")
+	emoteCache.StartedUpdating = now
+
+	newMap := make(map[string]string)
+	connections := make(map[string]bool)
+
+	// --- Global endpoints ---
+	connections["global_bttv"] = false
+	connections["global_7tv"] = false
+	connections["global_ffz"] = false
+
+	// BTTV Global
+	if bttvMap, err := fetchBTTVGlobal(); err == nil {
+		connections["global_bttv"] = true
+		for code, url := range bttvMap {
+			newMap[code] = url
+		}
+	} else {
+		log.Println("[emotes] BTTV global fetch error:", err)
+	}
+
+	// 7TV Global
+	if stvMap, err := fetch7TVGlobal(); err == nil {
+		connections["global_7tv"] = true
+		for code, url := range stvMap {
+			newMap[code] = url
+		}
+	} else {
+		log.Println("[emotes] 7TV global fetch error:", err)
+	}
+
+	// FFZ Global
+	if ffzMap, err := fetchFFZGlobal(); err == nil {
+		connections["global_ffz"] = true
+		for code, url := range ffzMap {
+			newMap[code] = url
+		}
+	} else {
+		log.Println("[emotes] FFZ global fetch error:", err)
+	}
+
+	// --- Channel endpoints ---
+	connections["channel_bttv"] = false
+	connections["channel_7tv"] = false
+	connections["channel_ffz"] = false
+
+	channelID, err := twitchApi.GetTwitchChannelID(env.TWITCH_CHANNEL, env.TWITCH_CLIENT_ID, env.TWITCH_SECRET)
+	if err != nil {
+		log.Println("[emotes] Error getting channel ID:", err)
+	} else {
+		log.Printf("[emotes] Channel %s has ID=%d\n", env.TWITCH_CHANNEL, channelID)
+
+		// BTTV Channel
+		if bttvChan, err := fetchBTTVChannel(channelID); err == nil {
+			connections["channel_bttv"] = true
+			for code, url := range bttvChan {
+				newMap[code] = url
+			}
+		} else {
+			log.Println("[emotes] BTTV channel fetch error:", err)
+		}
+
+		// 7TV Channel
+		if stvChan, err := fetch7TVChannel(channelID); err == nil {
+			connections["channel_7tv"] = true
+			for code, url := range stvChan {
+				newMap[code] = url
+			}
+		} else {
+			log.Println("[emotes] 7TV channel fetch error:", err)
+		}
+
+		// FFZ Channel
+		if ffzChan, err := fetchFFZChannel(channelID); err == nil {
+			connections["channel_ffz"] = true
+			for code, url := range ffzChan {
+				newMap[code] = url
+			}
+		} else {
+			log.Println("[emotes] FFZ channel fetch error:", err)
+		}
+	}
+
+	// Save the new data into cache
+	emoteCache.Emotes = newMap
+	emoteCache.Connections = connections
+	emoteCache.LastUpdated = now
+	emoteCache.StartedUpdating = time.Time{}
+
+	log.Println("[emotes] done updating 3rd-party emote cache")
+}
+
+func GetStatus() map[string]interface{} {
+	emoteLock.Lock()
+	defer emoteLock.Unlock()
+	return map[string]interface{}{
+		"NumEmotes":       len(emoteCache.Emotes),
+		"Connections":     emoteCache.Connections,
+		"LastUpdated":     emoteCache.LastUpdated,
+		"StartedUpdating": emoteCache.StartedUpdating,
+	}
 }

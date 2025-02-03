@@ -124,7 +124,7 @@ cat main-ingress.yaml | \
   kubectl apply -f -
 
 while kubectl -n $ns get deployment | grep ' 0 '; do
-  sleep 0.1
+  sleep 1
 done
 sleep 1
 kubectl -n $ns get deployment
