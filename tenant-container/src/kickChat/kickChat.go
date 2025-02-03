@@ -1,7 +1,6 @@
 package kickChat
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"time"
@@ -25,8 +24,7 @@ func ConnectToKickLoop() {
 }
 
 func ConnectToKick() {
-	ctx := context.Background()
-	if !props.GetChannelProp(ctx, "enabled").(bool) {
+	if !props.GetChannelProp(nil, "enabled").(bool) {
 		log.Println("[kick] bot is disabled, will not connect")
 		return
 	}
@@ -34,7 +32,7 @@ func ConnectToKick() {
 		log.Println("[kick] already connected, will not connect")
 		return
 	}
-	kcRaw := props.GetChannelProp(ctx, "kick_chatroom_id")
+	kcRaw := props.GetChannelProp(nil, "kick_chatroom_id")
 	kickChatroomID, _ := kcRaw.(string)
 	if kickChatroomID == "" {
 		log.Println("[kick] no chatroom ID, skipping connect")

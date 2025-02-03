@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"multibot/common/env"
-	"multibot/common/redisSession"
+	"multibot/common/redisClient"
 	"multibot/tenant-container/src/multiChat"
 	"time"
 
@@ -41,11 +41,11 @@ var (
 )
 
 func channelPropKey(propName string) string {
-	return redisSession.PREDIS + "channels/" + env.TWITCH_CHANNEL + "/channel_props/" + propName
+	return "channels/" + env.TWITCH_CHANNEL + "/channel_props/" + propName
 }
 
 func viewerKey(username string) string {
-	return redisSession.PREDIS + "channels/" + env.TWITCH_CHANNEL + "/viewers/" + username
+	return "channels/" + env.TWITCH_CHANNEL + "/viewers/" + username
 }
 
 func AddChannelPropListener(propName string, fn func(oldValue, newValue interface{})) {
@@ -57,17 +57,17 @@ func AddViewerPropListener(propName string, fn func(username string, oldVal, new
 }
 
 func ListChannels(ctx context.Context) []string {
-	channels, _ := redisSession.Rdb.SMembers(ctx, redisSession.PREDIS+"channels").Result()
+	channels, _ := redisClient.SMembers(ctx, "channels").Result()
 	return channels
 }
 
 func ListViewers(ctx context.Context) []string {
-	viewers, _ := redisSession.Rdb.SMembers(ctx, redisSession.PREDIS+"channels/"+env.TWITCH_CHANNEL+"/viewers").Result()
+	viewers, _ := redisClient.SMembers(ctx, "channels/"+env.TWITCH_CHANNEL+"/viewers").Result()
 	return viewers
 }
 
 func GetChannelProp(ctx context.Context, propName string) any {
-	val, err := redisSession.Rdb.Get(ctx, channelPropKey(propName)).Result()
+	val, err := redisClient.Get(ctx, channelPropKey(propName)).Result()
 	if err == redis.Nil || err != nil {
 		if defVal, ok := DEFAULT_CHANNEL_PROPS[propName]; ok {
 			return defVal
@@ -145,10 +145,10 @@ func SetChannelProp(ctx context.Context, propName string, propValue interface{})
 	}
 
 	if propValue == nil {
-		redisSession.Rdb.Del(ctx, channelPropKey(propName))
+		redisClient.Del(ctx, channelPropKey(propName))
 	} else {
 		raw, _ := json.Marshal(propValue)
-		redisSession.Rdb.Set(ctx, channelPropKey(propName), raw, 0)
+		redisClient.Set(ctx, channelPropKey(propName), raw, 0)
 	}
 	multiChat.Broadcast("channel_prop", map[string]any{
 		"prop_name":  propName,
@@ -164,7 +164,7 @@ func SetChannelProp(ctx context.Context, propName string, propValue interface{})
 }
 
 func GetViewerProp(ctx context.Context, username, propName string) any {
-	val, err := redisSession.Rdb.HGet(ctx, viewerKey(username), propName).Result()
+	val, err := redisClient.HGet(ctx, viewerKey(username), propName).Result()
 	if err == redis.Nil {
 		if defVal, ok := DEFAULT_VIEWER_PROPS[propName]; ok {
 			return defVal
@@ -179,7 +179,7 @@ func GetViewerProp(ctx context.Context, username, propName string) any {
 }
 
 func GetAllViewerProps(ctx context.Context, username string) (map[string]any, error) {
-	hash, err := redisSession.Rdb.HGetAll(ctx, viewerKey(username)).Result()
+	hash, err := redisClient.HGetAll(ctx, viewerKey(username)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -199,11 +199,11 @@ func SetViewerProp(ctx context.Context, username, propName string, propValue int
 		oldVal = GetViewerProp(ctx, username, propName)
 	}
 	if propValue == nil {
-		redisSession.Rdb.HDel(ctx, viewerKey(username), propName)
+		redisClient.HDel(ctx, viewerKey(username), propName)
 	} else {
-		redisSession.Rdb.SAdd(ctx, redisSession.PREDIS+"channels/"+env.TWITCH_CHANNEL+"/viewers", username)
+		redisClient.SAdd(ctx, "channels/"+env.TWITCH_CHANNEL+"/viewers", username)
 		raw, _ := json.Marshal(propValue)
-		redisSession.Rdb.HSet(ctx, viewerKey(username), propName, string(raw))
+		redisClient.HSet(ctx, viewerKey(username), propName, string(raw))
 	}
 	multiChat.Broadcast("viewer_prop", map[string]any{
 		"username":   username,
@@ -227,19 +227,19 @@ func DeleteViewer(ctx context.Context, username string) {
 			}
 		}
 	}
-	redisSession.Rdb.SRem(ctx, redisSession.PREDIS+"channels/"+env.TWITCH_CHANNEL+"/viewers", username)
-	redisSession.Rdb.Del(ctx, viewerKey(username))
+	redisClient.SRem(ctx, "channels/"+env.TWITCH_CHANNEL+"/viewers", username)
+	redisClient.Del(ctx, viewerKey(username))
 	multiChat.Broadcast("delete_viewer", map[string]any{"username": username})
 }
 
 func ClearChannelAndViewerProps(ctx context.Context) {
-	viewerSetKey := redisSession.PREDIS + "channels/" + env.TWITCH_CHANNEL + "/viewers"
-	viewers, _ := redisSession.Rdb.SMembers(ctx, viewerSetKey).Result()
+	viewerSetKey := "channels/" + env.TWITCH_CHANNEL + "/viewers"
+	viewers, _ := redisClient.SMembers(ctx, viewerSetKey).Result()
 	for _, v := range viewers {
-		redisSession.Rdb.Del(ctx, viewerKey(v))
+		redisClient.Del(ctx, viewerKey(v))
 	}
-	redisSession.Rdb.Del(ctx, viewerSetKey)
+	redisClient.Del(ctx, viewerSetKey)
 	for propName := range DEFAULT_CHANNEL_PROPS {
-		redisSession.Rdb.Del(ctx, channelPropKey(propName))
+		redisClient.Del(ctx, channelPropKey(propName))
 	}
 }

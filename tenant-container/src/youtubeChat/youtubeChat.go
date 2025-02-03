@@ -35,8 +35,7 @@ func ConnectToYouTubeLoop() {
 }
 
 func ConnectToYouTube() {
-	ctx := context.Background()
-	if !props.GetChannelProp(ctx, "enabled").(bool) {
+	if !props.GetChannelProp(nil, "enabled").(bool) {
 		log.Println("[youtube] bot is disabled, will not connect")
 		return
 	}
@@ -44,7 +43,7 @@ func ConnectToYouTube() {
 		log.Println("[youtube] already connected, will not connect")
 		return
 	}
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	youtubeCancel = cancel
 	youtubeConnected = true
 

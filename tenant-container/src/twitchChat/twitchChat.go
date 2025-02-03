@@ -1,7 +1,6 @@
 package twitchChat
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -81,8 +80,6 @@ var (
 	// Greet tracking: lastSeens stores last time a user talked (in ms).
 	lastSeens     = make(map[string]int64)
 	lastSeensLock sync.Mutex
-
-	ctxb = context.Background()
 )
 
 // -----------------------------------------------------------------------------
@@ -97,8 +94,7 @@ func ConnectToTwitchLoop() {
 }
 
 func ConnectToTwitch() {
-	ctx := context.Background()
-	if !props.GetChannelProp(ctx, "enabled").(bool) {
+	if !props.GetChannelProp(nil, "enabled").(bool) {
 		log.Println("[twitch] bot is disabled, will not connect")
 		return
 	}
@@ -119,12 +115,11 @@ func ConnectToTwitch() {
 			return
 		}
 
-		ctx := context.Background()
 		username := msg.User.DisplayName
 		if username == "" {
 			username = msg.User.Name
 		}
-		nickname, _ := props.GetViewerProp(ctx, username, "nickname").(string)
+		nickname, _ := props.GetViewerProp(nil, username, "nickname").(string)
 
 		color := msg.User.Color
 
@@ -183,7 +178,7 @@ func Say(message string) {
 	}
 	twitchClient.Say(env.TWITCH_CHANNEL, message)
 
-	nickname, _ := props.GetViewerProp(context.Background(), env.TWITCH_BOT_USERNAME, "nickname").(string)
+	nickname, _ := props.GetViewerProp(nil, env.TWITCH_BOT_USERNAME, "nickname").(string)
 	multiChat.SendChat("twitch", env.TWITCH_BOT_USERNAME, nickname, "", message, nil)
 }
 
@@ -225,34 +220,32 @@ func handleCommand(msg twitch.PrivateMessage, username string) (bool, bool) {
 			Say(fmt.Sprintf("@%s you do not have permission to clear chat", username))
 		}
 	case command == "!nick":
-		ctx := context.Background()
-		curr := props.GetViewerProp(ctx, username, "nickname")
+		curr := props.GetViewerProp(nil, username, "nickname")
 		if curr != nil {
-			props.SetViewerProp(ctx, username, "nickname", nil)
+			props.SetViewerProp(nil, username, "nickname", nil)
 			Say(fmt.Sprintf("@%s removed nickname, sad to see you go", username))
 		} else {
 			Say(fmt.Sprintf("@%s please provide a nickname, e.g. !nick name", username))
 		}
 	case strings.HasPrefix(command, "!nick "):
-		ctx := context.Background()
 		parts := strings.SplitN(command, " ", 2)
 		if len(parts) < 2 {
 			Say(fmt.Sprintf("@%s please provide a nickname after !nick", username))
 			break
 		}
 		nickname := strings.TrimSpace(parts[1])
-		maxLen := props.GetChannelPropAs(ctx, "max_nickname_length", 0)
+		maxLen := props.GetChannelPropAs(nil, "max_nickname_length", 0)
 
 		if goaway.IsProfane(nickname) {
 			Say(fmt.Sprintf("@%s no profanity allowed in nickname, choose a different one", username))
-		} else if props.GetViewerProp(ctx, username, "nickname") == nickname {
+		} else if props.GetViewerProp(nil, username, "nickname") == nickname {
 			Say(fmt.Sprintf("@%s you already have that nickname", username))
 		} else if len(nickname) > maxLen {
 			Say(fmt.Sprintf("@%s nickname \"%s\" is too long, max length = %d", username, nickname, maxLen))
 		} else if isNicknameTaken(nickname) {
 			Say(fmt.Sprintf("@%s nickname \"%s\" is already taken, see !botpage for the list", username, nickname))
 		} else {
-			props.SetViewerProp(ctx, username, "nickname", nickname)
+			props.SetViewerProp(nil, username, "nickname", nickname)
 			Say(fmt.Sprintf("@%s set nickname to %s", username, nickname))
 		}
 	default:
@@ -263,10 +256,9 @@ func handleCommand(msg twitch.PrivateMessage, username string) (bool, bool) {
 
 // isNicknameTaken checks if any other user is using the given nickname
 func isNicknameTaken(nick string) bool {
-	ctx := context.Background()
-	viewers := props.ListViewers(ctx)
+	viewers := props.ListViewers(nil)
 	for _, v := range viewers {
-		val := props.GetViewerProp(ctx, v, "nickname")
+		val := props.GetViewerProp(nil, v, "nickname")
 		if valStr, ok := val.(string); ok && valStr == nick {
 			return true
 		}
@@ -279,7 +271,7 @@ func greetz(username string, validCommand, shouldReply bool) {
 		return
 	}
 	// Only greet if the user has a nickname set (like in Node).
-	nick := props.GetViewerProp(ctxb, username, "nickname")
+	nick := props.GetViewerProp(nil, username, "nickname")
 	if nick == nil {
 		return
 	}
@@ -290,8 +282,8 @@ func greetz(username string, validCommand, shouldReply bool) {
 	nowMs := time.Now().UnixMilli()
 	lastSeensLock.Unlock()
 
-	greetzThreshold := props.GetChannelPropAs(ctxb, "greetz_threshold", int64(0))
-	wbThreshold := props.GetChannelPropAs(ctxb, "greetz_wb_threshold", int64(0))
+	greetzThreshold := props.GetChannelPropAs(nil, "greetz_threshold", int64(0))
+	wbThreshold := props.GetChannelPropAs(nil, "greetz_wb_threshold", int64(0))
 
 	if !hasSeen || (nowMs-lastSeen > greetzThreshold) {
 		// They’ve been away a long time => use initial greet
@@ -323,8 +315,8 @@ func greetz(username string, validCommand, shouldReply bool) {
 }
 
 func parseGreetz(stock []string, username string) string {
-	nickname, _ := props.GetViewerProp(ctxb, username, "nickname").(string)
-	custom, _ := props.GetViewerProp(ctxb, username, "custom_greetz").(string)
+	nickname, _ := props.GetViewerProp(nil, username, "nickname").(string)
+	custom, _ := props.GetViewerProp(nil, username, "custom_greetz").(string)
 
 	message := ""
 	if custom != "" {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -15,23 +14,14 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"multibot/common/env"
+	"multibot/common/redisClient"
 )
 
 const (
-	REDIS_NAMESPACE  = "multibot"
-	PREDIS           = REDIS_NAMESPACE + ":"
-	SESSION_PREFIX   = PREDIS + "sessions/" // Prefix for session keys in Redis.
-	SESSION_COOKIE   = "session_id"         // Name of the cookie that stores the session ID.
-	SESSION_USER_KEY = "twitch_user"        // Name of the key to store and retrieve the user.
-	SESSION_TTL      = 30 * time.Minute     // How long a session lives in Redis.
-)
-
-var (
-	Rdb *redis.Client
-
-	STATE_DB_URL      = os.Getenv("STATE_DB_URL")
-	STATE_DB_PASSWORD = os.Getenv("STATE_DB_PASSWORD")
-	SESSION_SECRET    = os.Getenv("SESSION_SECRET")
+	SESSION_PREFIX   = "sessions/"      // Prefix for session keys in Redis.
+	SESSION_COOKIE   = "session_id"     // Name of the cookie that stores the session ID.
+	SESSION_USER_KEY = "twitch_user"    // Name of the key to store and retrieve the user.
+	SESSION_TTL      = 30 * time.Minute // How long a session lives in Redis.
 )
 
 // Session holds session data.
@@ -47,12 +37,12 @@ func saveSession(ctx context.Context, session *Session) error {
 		return err
 	}
 	key := SESSION_PREFIX + session.ID
-	return Rdb.Set(ctx, key, buf.Bytes(), SESSION_TTL).Err()
+	return redisClient.Set(ctx, key, buf.Bytes(), SESSION_TTL).Err()
 }
 
 func loadSession(ctx context.Context, sessionID string) (*Session, error) {
 	key := SESSION_PREFIX + sessionID
-	data, err := Rdb.Get(ctx, key).Bytes() // Use .Bytes() when storing raw bytes
+	data, err := redisClient.Get(ctx, key).Bytes() // Use .Bytes() when storing raw bytes
 	if err == redis.Nil {
 		return &Session{
 			ID:   sessionID,
@@ -176,17 +166,4 @@ func DeleteSessionUser(r *http.Request) {
 		return
 	}
 	delete(session.Data, SESSION_USER_KEY)
-}
-
-func Init() {
-	opt, err := redis.ParseURL(STATE_DB_URL)
-	if err != nil {
-		log.Fatalf("failed to parse redis URL: %v", err)
-	}
-	opt.Password = STATE_DB_PASSWORD
-	Rdb = redis.NewClient(opt)
-	if err := Rdb.Ping(context.Background()).Err(); err != nil {
-		log.Fatalf("redis ping error: %v", err)
-	}
-	log.Println("Connected to Redis!")
 }

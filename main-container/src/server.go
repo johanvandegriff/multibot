@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"html/template"
 	"io"
@@ -22,6 +21,7 @@ import (
 	"golang.org/x/oauth2/twitch"
 
 	"multibot/common/env"
+	"multibot/common/redisClient"
 	"multibot/common/redisSession"
 
 	"multibot/main-container/src/k8s"
@@ -57,7 +57,7 @@ func onboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	inSet, err := redisSession.Rdb.SIsMember(ctx, redisSession.PREDIS+"channels", channel).Result()
+	inSet, err := redisClient.SIsMember(ctx, "channels", channel).Result()
 	if err != nil {
 		log.Printf("redis SIsMember error: %v", err)
 		http.Error(w, "redis error", http.StatusInternalServerError)
@@ -73,7 +73,7 @@ func onboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = redisSession.Rdb.SAdd(ctx, redisSession.PREDIS+"channels", channel).Result()
+	_, err = redisClient.SAdd(ctx, "channels", channel).Result()
 	if err != nil {
 		log.Printf("redis SAdd error: %v", err)
 		http.Error(w, "redis error", http.StatusInternalServerError)
@@ -94,7 +94,7 @@ func offboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	inSet, err := redisSession.Rdb.SIsMember(ctx, redisSession.PREDIS+"channels", channel).Result()
+	inSet, err := redisClient.SIsMember(ctx, "channels", channel).Result()
 	if err != nil {
 		log.Printf("redis SIsMember error: %v", err)
 		http.Error(w, "redis error", http.StatusInternalServerError)
@@ -110,8 +110,8 @@ func offboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// remove the first_run
-	redisSession.Rdb.Del(ctx, redisSession.PREDIS+"channels/"+channel+"/channel_props/did_first_run")
-	_, err = redisSession.Rdb.SRem(ctx, redisSession.PREDIS+"channels", channel).Result()
+	redisClient.Del(ctx, "channels/"+channel+"/channel_props/did_first_run")
+	_, err = redisClient.SRem(ctx, "channels", channel).Result()
 	if err != nil {
 		log.Printf("redis SRem error: %v", err)
 		http.Error(w, "redis error", http.StatusInternalServerError)
@@ -145,7 +145,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("twitchUser retrieved from session:", user.Login)
 	}
 
-	channels, err := redisSession.Rdb.SMembers(r.Context(), redisSession.PREDIS+"channels").Result()
+	channels, err := redisClient.SMembers(r.Context(), "channels").Result()
 	if err != nil {
 		log.Printf("redis SMembers error: %v", err)
 	}
@@ -265,7 +265,7 @@ func twitchCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	channel := user.Login
-	inSet, err := redisSession.Rdb.SIsMember(ctx, redisSession.PREDIS+"channels", channel).Result()
+	inSet, err := redisClient.SIsMember(ctx, "channels", channel).Result()
 	if err != nil {
 		log.Printf("redis SIsMember error: %v", err)
 		http.Error(w, "redis error", http.StatusInternalServerError)
@@ -316,10 +316,11 @@ func createSingleHostProxy(target string) http.Handler {
 
 func main() {
 	gob.Register(&redisSession.TwitchUser{})
-	redisSession.Init()
+
+	redisClient.Init()
 
 	// Pre-create any tenant containers for existing channels in Redis
-	channels, _ := redisSession.Rdb.SMembers(context.Background(), redisSession.PREDIS+"channels").Result()
+	channels, _ := redisClient.SMembers(nil, "channels").Result()
 	log.Printf("channels onboarded: %v\n", channels)
 	k8s.Init(channels)
 

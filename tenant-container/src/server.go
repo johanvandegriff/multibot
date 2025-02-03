@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"multibot/common/env"
+	"multibot/common/redisClient"
 	"multibot/tenant-container/src/emotes"
 	"multibot/tenant-container/src/frontend"
 	"multibot/tenant-container/src/kickChat"
@@ -32,14 +32,13 @@ const (
 )
 
 var (
-	ctxb             = context.Background()
 	enabledRateLimit time.Time // rate-limit toggling "enabled"
 )
 
 func main() {
 	gob.Register(&redisSession.TwitchUser{})
 
-	redisSession.Init()
+	redisClient.Init()
 
 	// Run first-run checks.
 	go ensureFirstRun()
@@ -364,12 +363,12 @@ func channelAuthMiddleware(next http.Handler) http.Handler {
 }
 
 func ensureFirstRun() {
-	didFirstRun := props.GetChannelProp(ctxb, "did_first_run").(bool)
+	didFirstRun := props.GetChannelProp(nil, "did_first_run").(bool)
 
 	if !didFirstRun {
 		log.Println("FIRST RUN logic: clearing viewer data, channel props, etc.")
-		props.ClearChannelAndViewerProps(ctxb)
-		props.SetViewerProp(ctxb, env.TWITCH_BOT_USERNAME, "nickname", env.DEFAULT_BOT_NICKNAME)
-		props.SetChannelProp(ctxb, "did_first_run", true)
+		props.ClearChannelAndViewerProps(nil)
+		props.SetViewerProp(nil, env.TWITCH_BOT_USERNAME, "nickname", env.DEFAULT_BOT_NICKNAME)
+		props.SetChannelProp(nil, "did_first_run", true)
 	}
 }

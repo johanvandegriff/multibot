@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"multibot/common/env"
 	"os"
 	"strings"
 
@@ -14,6 +13,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+
+	"multibot/common/env"
 )
 
 var (

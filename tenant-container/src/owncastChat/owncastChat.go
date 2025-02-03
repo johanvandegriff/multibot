@@ -1,7 +1,6 @@
 package owncastChat
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -32,8 +31,7 @@ func ConnectToOwncastLoop() {
 }
 
 func ConnectToOwncast() {
-	ctx := context.Background()
-	if !props.GetChannelProp(ctx, "enabled").(bool) {
+	if !props.GetChannelProp(nil, "enabled").(bool) {
 		log.Println("[owncast] bot is disabled, will not connect")
 		return
 	}
@@ -41,7 +39,7 @@ func ConnectToOwncast() {
 		log.Println("[owncast] already connected, will not connect")
 		return
 	}
-	ocURLRaw := props.GetChannelProp(ctx, "owncast_url")
+	ocURLRaw := props.GetChannelProp(nil, "owncast_url")
 	owncastURL, _ := ocURLRaw.(string)
 	if owncastURL == "" {
 		log.Println("[owncast] no owncast_url, skipping connect")
