@@ -20,8 +20,8 @@ var (
 		"did_first_run":       false,
 		"fwd_cmds_yt_twitch":  []string{"!sr", "!test"},
 		"max_nickname_length": 20,
-		"greetz_threshold":    (5 * time.Hour).Milliseconds(),     //TODO
-		"greetz_wb_threshold": (3 / 4 * time.Hour).Milliseconds(), //TODO
+		"greetz_threshold":    (5 * time.Hour).Milliseconds(),
+		"greetz_wb_threshold": (45 * time.Minute).Milliseconds(),
 		"youtube_id":          "",
 		"owncast_url":         "",
 		"kick_username":       "",
@@ -95,7 +95,7 @@ func GetChannelPropAs[T int | int64 | float64](ctx context.Context, propName str
 	switch defaultValueAny.(type) {
 	case int: //T = int
 		if v == nil {
-			return 0
+			return defaultValue
 		}
 		switch v.(type) {
 		case int:
@@ -105,11 +105,11 @@ func GetChannelPropAs[T int | int64 | float64](ctx context.Context, propName str
 		case float64:
 			return T(v.(float64))
 		default:
-			return 0
+			return defaultValue
 		}
 	case int64: //T = int64
 		if v == nil {
-			return 0
+			return defaultValue
 		}
 		switch v.(type) {
 		case int:
@@ -119,11 +119,11 @@ func GetChannelPropAs[T int | int64 | float64](ctx context.Context, propName str
 		case float64:
 			return T(v.(float64))
 		default:
-			return 0
+			return defaultValue
 		}
 	case float64: //T = float64
 		if v == nil {
-			return 0
+			return defaultValue
 		}
 		switch v.(type) {
 		case float64:
@@ -133,7 +133,7 @@ func GetChannelPropAs[T int | int64 | float64](ctx context.Context, propName str
 		case int64:
 			return T(v.(int64))
 		default:
-			return 0
+			return defaultValue
 		}
 	}
 	return defaultValue

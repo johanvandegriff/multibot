@@ -33,6 +33,7 @@ docker build -t "$DOCKER_USERNAME/multibot-tenant:$docker_tag" -t "$DOCKER_USERN
 docker push "$DOCKER_USERNAME/multibot-main:latest"
 docker push "$DOCKER_USERNAME/multibot-tenant:latest"
 
+set +x # hide commands temporarily for secrets
 kubectl -n $ns create secret generic app-secrets \
   --from-literal=BASE_URL=$BASE_URL \
   --from-literal=TWITCH_SUPER_ADMIN_USERNAME=$TWITCH_SUPER_ADMIN_USERNAME \
@@ -46,6 +47,7 @@ kubectl -n $ns create secret generic app-secrets \
   --from-literal=DOCKER_USERNAME=$DOCKER_USERNAME \
   --from-literal=IMAGE_PULL_POLICY=$IMAGE_PULL_POLICY \
   --dry-run=client -o yaml > app-secrets.yaml
+set -x #show commands again
 
 kubectl -n $ns apply -f app-secrets.yaml
 rm app-secrets.yaml

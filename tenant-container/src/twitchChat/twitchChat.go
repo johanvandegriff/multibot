@@ -283,8 +283,10 @@ func greetz(username string, validCommand, shouldReply bool) {
 	nowMs := time.Now().UnixMilli()
 	lastSeensLock.Unlock()
 
-	greetzThreshold := props.GetChannelPropAs(nil, "greetz_threshold", int64(0))
-	wbThreshold := props.GetChannelPropAs(nil, "greetz_wb_threshold", int64(0))
+	greetzThreshold := props.GetChannelPropAs(nil, "greetz_threshold", props.DEFAULT_CHANNEL_PROPS["greetz_threshold"].(int64))
+	wbThreshold := props.GetChannelPropAs(nil, "greetz_wb_threshold", props.DEFAULT_CHANNEL_PROPS["greetz_wb_threshold"].(int64))
+
+	log.Println("[greetz]", lastSeen, "|", hasSeen, "|", nowMs, "|", greetzThreshold, "|", wbThreshold)
 
 	if !hasSeen || (nowMs-lastSeen > greetzThreshold) {
 		// They’ve been away a long time => use initial greet
